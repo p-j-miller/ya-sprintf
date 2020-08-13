@@ -1,0 +1,31 @@
+These programs require a C99 compiler.
+There are normally no compiler warnings (or errors) when compiling these program.
+
+To compile the test program under Linux try:
+ gcc -Wall -Ofast -fsanitize=address -fsanitize=undefined -fsanitize-address-use-after-scope -fstack-protector-all -g3  main.c atof.c double-double.c -lasan -lquadmath -lm  -o test
+ 
+ then ./test to run
+ [this has been tested with gcc 9.3.0 under Ubuntu 20.04 LTS ] 
+ 
+ Note the -fsanitize , -fstack and -lasan options are purely for test purposes to ensure the code has no nasty side effects, you can compile and run (a lot faster) without these.
+ 
+ Under Windows with TDM-GCC 9.2.0 
+  gcc -Wall -Ofast main.c atof.c double-double.c hr_timer.c fmaq.c -lquadmath -o test
+   
+  then test.exe to run
+  
+  There is a makefile and .dev project file created by dev-c++ which should work as long as a recent c compiler (eg TDM-GCC 9.2.0) is installed and setup in the dev-c++ IDE.
+  
+  For convenience, this directory also contains the source for fmaq() as the version in TDM-GCC 9.2.0 is buggy.
+	fmaq() came from https://fossies.org/linux/gcc/libquadmath/math/fmaq.c  
+	which is described as Member "gcc-9.3.0/libquadmath/math/fmaq.c" (12 Mar 2020, 9888 Bytes) of package /linux/misc/gcc-9.3.0.tar.xz:
+	The corresponding header file was at https://raw.githubusercontent.com/gcc-mirror/gcc/master/libquadmath/quadmath-imp.h and 
+	https://github.com/gcc-mirror/gcc/blob/master/libquadmath/quadmath-imp.h
+  
+	These are supplied here for convenience only and have a different license.
+	In most cases fmaq.c will not be required as a working version will be supplied with your compiler, and so you should be able to delete "fmaq.c" from the compiler command line.
+  
+ 
+ See ya_sprintf.h and test.c for more information and what to expect from the test program.
+  
+  

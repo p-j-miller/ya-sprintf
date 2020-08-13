@@ -1,0 +1,40 @@
+# Project: ya_sprintf
+# Makefile created by Dev-C++ 5.11
+
+CPP      = g++.exe
+CC       = gcc.exe
+WINDRES  = windres.exe
+OBJ      = main.o atof.o double-double.o hr_timer.o fmaq.o
+LINKOBJ  = main.o atof.o double-double.o hr_timer.o fmaq.o
+LIBS     = -L"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib" -L"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/x86_64-w64-mingw32/lib" -static-libgcc ../../../mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib/gcc/x86_64-w64-mingw32/9.2.0/libquadmath.a -m64
+INCS     = -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/x86_64-w64-mingw32/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib/gcc/x86_64-w64-mingw32/9.2.0/include"
+CXXINCS  = -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/x86_64-w64-mingw32/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib/gcc/x86_64-w64-mingw32/9.2.0/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib/gcc/x86_64-w64-mingw32/9.2.0/include/c++"
+BIN      = ya_sprintf.exe
+CXXFLAGS = $(CXXINCS) -Ofast -m64 -std=gnu99 -Wall
+CFLAGS   = $(INCS) -Ofast -m64 -std=gnu99 -Wall
+RM       = rm.exe -f
+
+.PHONY: all all-before all-after clean clean-custom
+
+all: all-before $(BIN) all-after
+
+clean: clean-custom
+	${RM} $(OBJ) $(BIN)
+
+$(BIN): $(OBJ)
+	$(CC) $(LINKOBJ) -o $(BIN) $(LIBS)
+
+main.o: main.c
+	$(CC) -c main.c -o main.o $(CFLAGS)
+
+atof.o: atof.c
+	$(CC) -c atof.c -o atof.o $(CFLAGS)
+
+double-double.o: double-double.c
+	$(CC) -c double-double.c -o double-double.o $(CFLAGS)
+
+hr_timer.o: hr_timer.c
+	$(CC) -c hr_timer.c -o hr_timer.o $(CFLAGS)
+
+fmaq.o: fmaq.c
+	$(CC) -c fmaq.c -o fmaq.o $(CFLAGS)
