@@ -309,6 +309,12 @@ The next 2 functions write to stdout:
 
 #include <stdarg.h> // for va_list()
 #include <stddef.h> // size_t, ptrdiff_t
+#include <stdio.h>
+#include <math.h>
+#include <ctype.h>
+#if  defined(__SIZEOF_INT128__) && defined(YA_SP_SPRINTF_Q ) /* if compiler supports __float128 & __int128 and support for this is requested */
+#include <quadmath.h> /* see https://gcc.gnu.org/onlinedocs/libquadmath/quadmath_005fsnprintf.html#quadmath_005fsnprintf - also needs quadmath library linking in */
+#endif
 
 #ifndef YA_SP_SPRINTF_MIN
 #define YA_SP_SPRINTF_MIN 512 // how many characters per callback

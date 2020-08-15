@@ -16,7 +16,7 @@ To compile the test program under Linux try:
   
   There is a makefile and .dev project file created by dev-c++ which should work as long as a recent c compiler (eg TDM-GCC 9.2.0) is installed and setup in the dev-c++ IDE.
   
-  For convenience, this directory also contains the source for fmaq() as the version in TDM-GCC 9.2.0 is buggy.
+  For convenience, this directory also contains the source for fmaq() as the version in TDM-GCC 9.2.0 (and some other gcc builds) is buggy.
 	fmaq() came from https://fossies.org/linux/gcc/libquadmath/math/fmaq.c  
 	which is described as Member "gcc-9.3.0/libquadmath/math/fmaq.c" (12 Mar 2020, 9888 Bytes) of package /linux/misc/gcc-9.3.0.tar.xz:
 	The corresponding header file was at https://raw.githubusercontent.com/gcc-mirror/gcc/master/libquadmath/quadmath-imp.h and 
@@ -24,8 +24,12 @@ To compile the test program under Linux try:
   
 	These are supplied here for convenience only and have a different license.
 	In most cases fmaq.c will not be required as a working version will be supplied with your compiler, and so you should be able to delete "fmaq.c" from the compiler command line.
+	You can check this by omitting fmaq.c from the command lines above for the test program and checking that the output is identical to that obtained with the supplied fmaq.c .
   
  
  See ya_sprintf.h and test.c for more information and what to expect from the test program.
+ 
+ See example.c and ya-sprintf.c for a very simple example of use.
+ 
   
   
