@@ -131,9 +131,11 @@ PART2: 1960234 sprintf tests completed, no errors found
 #ifdef __MINGW32__ 
 /* Define __USE_MINGW_ANSI_STDIO to 1 to use C99 compatible stdio functions on MinGW. see for example https://stackoverflow.com/questions/44382862/how-to-printf-a-size-t-without-warning-in-mingw-w64-gcc-7-1 */
 #define __USE_MINGW_ANSI_STDIO 1 /* So mingw uses its printf not msvcrt */
-#else
+#elif defined(__linux)
  // assume Linux
- #include <fpu_control.h>	
+#ifdef __x86_64 
+ #include <fpu_control.h>	/* needed for WSL 1 fix */
+#endif 
  #define YA_SP_LINUX_STYLE /* tell ya_printf() to print to match Linux gcc libc */
  #define YA_SP_SIGNED_NANS /* tell ya_sprintf we want signed NAN's (to match linux gcc libc) */
 #endif
@@ -1262,7 +1264,7 @@ int main(int argc, char *argv[])
   double time_taken;
   init_HR_Timer(); // zero timer
 #endif  
-#ifndef __MINGW32__  /* if not running on MINGW assume we are running on WSL1 and apply a workaround for a WSL1 bug - this should be OK for WSL-2 and linux */
+#if defined(__x86_64) && defined(__linux) /* running linux on x86_64 assume we are running on WSL1 and apply a workaround for a WSL1 bug - this should be OK for WSL-2 and linux */
    unsigned short Cw = 0x37f;
    _FPU_SETCW(Cw);	
 #endif
