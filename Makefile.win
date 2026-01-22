@@ -1,25 +1,25 @@
 # Project: ya_sprintf
-# Makefile created by Dev-C++ 5.11
+# Makefile created by Embarcadero Dev-C++ 6.3
 
 CPP      = g++.exe
 CC       = gcc.exe
 WINDRES  = windres.exe
-OBJ      = main.o atof.o double-double.o hr_timer.o fmaq.o
-LINKOBJ  = main.o atof.o double-double.o hr_timer.o fmaq.o
-LIBS     = -L"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib" -L"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/x86_64-w64-mingw32/lib" -static-libgcc ../../../mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib/gcc/x86_64-w64-mingw32/9.2.0/libquadmath.a -m64
-INCS     = -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/x86_64-w64-mingw32/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib/gcc/x86_64-w64-mingw32/9.2.0/include"
-CXXINCS  = -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/x86_64-w64-mingw32/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib/gcc/x86_64-w64-mingw32/9.2.0/include" -I"C:/mingw-w64-mcf-compilers/tdm-gcc-9-2-0/lib/gcc/x86_64-w64-mingw32/9.2.0/include/c++"
+OBJ      = main.o ../atof-and-ftoa/atof.o ../double-double/double-double.o ../nan_type/nan_type.o ../u2_64-128bits-with-two-u64/u2_64.o ../my_printf/my_printf.o ../hr_timer/hr_timer.o ../fma/fmaq.o ryu/d2fixed_ya_sprintf.o ryu/s2d_fast_atof.o
+LINKOBJ  = main.o ../atof-and-ftoa/atof.o ../double-double/double-double.o ../nan_type/nan_type.o ../u2_64-128bits-with-two-u64/u2_64.o ../my_printf/my_printf.o ../hr_timer/hr_timer.o ../fma/fmaq.o ryu/d2fixed_ya_sprintf.o ryu/s2d_fast_atof.o
+LIBS     = -L"C:/winlibs/winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2/mingw32/lib" -L"C:/winlibs/winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2/mingw32/i686-w64-mingw32/lib" -static-libgcc -lquadmath -static -m32
+INCS     = -I"C:/winlibs/winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2/mingw32/include" -I"C:/winlibs/winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2/mingw32/i686-w64-mingw32/include" -I"C:/winlibs/winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2/mingw32/lib/gcc/i686-w64-mingw32/15.2.0/include" -I"D:/dev-cpp-files/ya-sprintf"
+CXXINCS  = -I"C:/winlibs/winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2/mingw32/include" -I"C:/winlibs/winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2/mingw32/i686-w64-mingw32/include" -I"C:/winlibs/winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2/mingw32/lib/gcc/i686-w64-mingw32/15.2.0/include" -I"D:/dev-cpp-files/ya-sprintf"
 BIN      = ya_sprintf.exe
-CXXFLAGS = $(CXXINCS) -Ofast -m64 -std=gnu99 -Wall
-CFLAGS   = $(INCS) -Ofast -m64 -std=gnu99 -Wall
-RM       = rm.exe -f
+CXXFLAGS = $(CXXINCS) -Ofast -m32 -std=c99 -Wall
+CFLAGS   = $(INCS) -Ofast -m32 -std=c99 -Wall -std=gnu99 -fexcess-precision=standard
+DEL      = C:\Program Files (x86)\Embarcadero\Dev-Cpp\devcpp.exe INTERNAL_DEL
 
 .PHONY: all all-before all-after clean clean-custom
 
 all: all-before $(BIN) all-after
 
 clean: clean-custom
-	${RM} $(OBJ) $(BIN)
+	${DEL} $(OBJ) $(BIN)
 
 $(BIN): $(OBJ)
 	$(CC) $(LINKOBJ) -o $(BIN) $(LIBS)
@@ -27,14 +27,29 @@ $(BIN): $(OBJ)
 main.o: main.c
 	$(CC) -c main.c -o main.o $(CFLAGS)
 
-atof.o: atof.c
-	$(CC) -c atof.c -o atof.o $(CFLAGS)
+../atof-and-ftoa/atof.o: ../atof-and-ftoa/atof.c
+	$(CC) -c ../atof-and-ftoa/atof.c -o ../atof-and-ftoa/atof.o $(CFLAGS)
 
-double-double.o: double-double.c
-	$(CC) -c double-double.c -o double-double.o $(CFLAGS)
+../double-double/double-double.o: ../double-double/double-double.c
+	$(CC) -c ../double-double/double-double.c -o ../double-double/double-double.o $(CFLAGS)
 
-hr_timer.o: hr_timer.c
-	$(CC) -c hr_timer.c -o hr_timer.o $(CFLAGS)
+../nan_type/nan_type.o: ../nan_type/nan_type.c
+	$(CC) -c ../nan_type/nan_type.c -o ../nan_type/nan_type.o $(CFLAGS)
 
-fmaq.o: fmaq.c
-	$(CC) -c fmaq.c -o fmaq.o $(CFLAGS)
+../u2_64-128bits-with-two-u64/u2_64.o: ../u2_64-128bits-with-two-u64/u2_64.c
+	$(CC) -c ../u2_64-128bits-with-two-u64/u2_64.c -o ../u2_64-128bits-with-two-u64/u2_64.o $(CFLAGS)
+
+../my_printf/my_printf.o: ../my_printf/my_printf.c
+	$(CC) -c ../my_printf/my_printf.c -o ../my_printf/my_printf.o $(CFLAGS)
+
+../hr_timer/hr_timer.o: ../hr_timer/hr_timer.c
+	$(CC) -c ../hr_timer/hr_timer.c -o ../hr_timer/hr_timer.o $(CFLAGS)
+
+../fma/fmaq.o: ../fma/fmaq.c
+	$(CC) -c ../fma/fmaq.c -o ../fma/fmaq.o $(CFLAGS)
+
+ryu/d2fixed_ya_sprintf.o: ryu/d2fixed_ya_sprintf.c
+	$(CC) -c ryu/d2fixed_ya_sprintf.c -o ryu/d2fixed_ya_sprintf.o $(CFLAGS)
+
+ryu/s2d_fast_atof.o: ryu/s2d_fast_atof.c
+	$(CC) -c ryu/s2d_fast_atof.c -o ryu/s2d_fast_atof.o $(CFLAGS)
