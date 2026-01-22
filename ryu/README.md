@@ -5,7 +5,10 @@ This is a copy of https://github.com/ulfjack/ryu/tree/master/ryu taken in Decemb
 Minor edits to d2fixed.c to improve portability and compatibility (all marked "PMi")
 
 Peter Miller also added d2fixed_ya_sprintf.[ch] , which while heavily based on d2fixed.c provides an interface between ryu and ya_sprintf so giving a full set of printf functions that use ryu for double-string conversion
-(see https://github.com/p-j-miller/ya-sprintf ). Tests for the new functions in d2fixed_ya_sprintf are included as part of ya_sprintf.
+(see https://github.com/p-j-miller/ya-sprintf ). Tests for the new functions in d2fixed_ya_sprintf are included as part of ya_sprintf. 
+
+Peter Miler also added s2d_fast_atof.[ch] to interface atof and ryu - see https://github.com/p-j-miller/atof .
+This also required changes to d2s_intrinsics.h and common.h (which are clearly marked).
 
 # The original readme follows:
 
@@ -43,7 +46,7 @@ Server version 1803.
 
 All code outside of third_party/ is copyrighted by Ulf Adams and contributors,
 and may be used freely in accordance with the Apache 2.0 license.
-Alternatively, the files in the ryu/ directory may be used freely in accordance
+Alternatively, the files in this ryu/ directory may be used freely in accordance
 with the Boost 1.0 license.
 
 All contributions are required to maintain these licenses.
