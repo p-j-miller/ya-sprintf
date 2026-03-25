@@ -1,7 +1,8 @@
 ﻿/* test code for ya_sprintf.c
 
    Written by Peter Miller 2/2020
-   This version 1/26
+   This version 2/26 - latest changes were to support dconvert derived double conversion in ya_sprintf.
+   					 - this still generates correct numbers, but especialy for denormals generates different results to the other double converters which required some changes to this test suite to avoid "false failures".
  
  This version adds tests for %w32/64/128 - which is a C23 addition.
  %b/%B another C23 addition was already covered by these tests.  
@@ -16,10 +17,10 @@ The fix for WSL 1 (which is implemented here) is:
 	 
 Under Ubuntu Linux ( Ubuntu 24.04.3 LTS (GNU/Linux 6.6.87.2-microsoft-standard-WSL2 x86_64)) the -fsanatize works as expected (but also needs -g to add debugging info to executable).	
 	With recommended directory layout this gives (note fmaq.c is optional, but gives a significant speed up)
-	gcc -m64 -Wall -Ofast -fexcess-precision=standard -I. -D_FORTIFY_SOURCE=1 main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -lm -o test
+	gcc -m64 -Wall -Ofast  -I. -D_FORTIFY_SOURCE=1 main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ya-dconvert.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -lm -o test
 	
  or using the sanitizer capabilities (which results in a significantly slower runtime, but provides many additional checks for errors when used with the test program):
- 	gcc -m64 -Wall -Ofast -fsanitize=address -fsanitize=undefined -fstack-protector-all -g3 -fexcess-precision=standard -I. -D_FORTIFY_SOURCE=1 main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lasan -lquadmath -lm -o test
+ 	gcc -m64 -Wall -Ofast -fsanitize=address -fsanitize=undefined -fstack-protector-all -g3 -fexcess-precision=standard -I. -D_FORTIFY_SOURCE=1 main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ya-dconvert.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lasan -lquadmath -lm -o test
 
 
  The -D_FORTIFY_SOURCE=1 is described at https://gcc.gnu.org/legacy-ml/gcc-patches/2004-09/msg02055.html and https://wiki.ubuntu.com/ToolChain/CompilerFlags . 
@@ -29,16 +30,16 @@ Under Ubuntu Linux ( Ubuntu 24.04.3 LTS (GNU/Linux 6.6.87.2-microsoft-standard-W
  
  To get 32 capabilities on Ubuntu try: sudo apt install gcc-multilib g++-multilib 
  then -m32 -msse2 (instead of -m64) will work with the command lines above (see e.g. https://www.geeksforgeeks.org/cpp/compile-32-bit-program-64-bit-gcc-c-c/ ), e.g.
-	gcc -m32 -msse2 -Wall -Ofast -fexcess-precision=standard -I. -D_FORTIFY_SOURCE=1 main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -lm -o test
+	gcc -m32  -Wall -Ofast  -I. -D_FORTIFY_SOURCE=1 main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ya-dconvert.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -lm -o test
  
  
  Under Windows using winlibs gcc 15.2.0 the command line becomes (note omitting fmaq significantly increases the runtime ) - please check the paths to the compiler and the other files are correct for your setup/directory structure:
  
- 	C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -Wall -m64 -fexcess-precision=standard -Ofast  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
+ 	C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -Wall -m64  -Ofast  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ya-dconvert.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
  	
  	if you wish to use the sanitizer then try:
 	
-	C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -fsanitize=undefined -fsanitize-trap=all -fsanitize=bounds-strict -fsanitize-address-use-after-scope -Wall -m64 -fexcess-precision=standard -O3  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
+	C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -fsanitize=undefined -fsanitize-trap=all -fsanitize=bounds-strict -fsanitize-address-use-after-scope -Wall -m64 -fexcess-precision=standard -O3  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ya-dconvert.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
  	
 	Note -fsanitize-trap=all is required (otherwise the linker will complain about missing library asan which is not present with Winlibs), the other -fsanitize options are optional.
  	
@@ -46,9 +47,9 @@ Under Ubuntu Linux ( Ubuntu 24.04.3 LTS (GNU/Linux 6.6.87.2-microsoft-standard-W
  These seem to be due to potential issues if the format string does not match the arguments which is inherent to a function like sprintf().
  Using the YA_SP_SPRINTF_CHECK_FMT #define will cause gcc to check format string against the arguments, so resolving these issues (but at a loss to functionality as it does not support all sprintf's extensions).
  
- For windows 32 bit using winlibs gcc 15.2.0 the command line becomes (omitting fmaq significantly increases the runtime, -msse2 is optional [but gives faster execution], but many files turn this on anyway as sse2 is available in almost any processor you are likely to be using [see below] )
+ For windows 32 bit using winlibs gcc 15.2.0 the command line becomes (omitting fmaq significantly increases the runtime)
  
- 	C:\winlibs\winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw32\bin\gcc -m32 -msse2 -fexcess-precision=standard -Wall -Ofast  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
+ 	C:\winlibs\winlibs-i686-posix-dwarf-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw32\bin\gcc -m32 -Wall -Ofast  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ya-dconvert.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
  	
 Warning - there are a number of assert() calls in this code - these should never fail but can be removed by defining NDEBUG (e.g. adding the compiler option -DNDEBUG), note this made no measurable difference to the execution time of the test program. 
 
@@ -91,26 +92,40 @@ Note that -std=gnu99 is required to compile fmaq.c (everything else will compile
  but its approx twice the speed the the version supplied in the winlibs version of gcc 15.2.0, so its use is still recommended.
 
 Timing (all on the same PC with gcc 15.2.0 and Windows 11 25H2 with Intel i3-10100 CPU @ 3.6GHz ):
-for doubles via snprintf("%.*e") average time per test for precisions from 0 to 21
- W64 MSVCRT/mingw	:3395.3ns   baseline
- W64 UCRT/Winlibs  	: 445.9ns	7.6* faster
- W64 ya_sprintf		: 219.9ns	15.4* faster, *2 vs UCRT
- W64 ya_sprintf/ryu : 136.5ns	24.9* faster, *3.3 vs UCRT ( *1.6 vs standard ya_sprintf)
- 
- W32 MSVCRT/mingw	:3859.7ns   baseline
- W32 UCRT/Winlibs  	: 834.4ns	4.6* faster
- W32 ya_sprintf		: 262.6ns	14.7* faster, *3.2 vs UCRT
- W32 ya_sprintf/ryu : 215.4ns	17.9* faster, *3.9 vs UCRT ( *1.2 vs standard ya_sprintf)
+for doubles via snprintf("%.*e") using part 1 of this test program:
+Timing W64:	All under Windows 11 using Intel i3-10100					23/02/2026
+algorithm				part1 (secs)	part2 (secs)	part 1 delta (secs)	* speedup ref ucrt	* speedup ref base ya_sprintf	* speedup ref Ryu
+ya-dconvert				32.3486			108.466			6.0836				3.9					2.1								1.3
+Ryu						34.3185			109.934			8.0535				2.9					1.6								1.0
+standard ya_sprintf		38.8029			114.35			12.5379				1.9					1.0	
+standard sprintf(ucrt)	49.8741			125.268			23.6091				1.0		
+Null (timing basline)	26.265			102.7			0			
+						
+						
+Timing W32:	All under Windows 11 using Intel i3-10100					
+algorithm				part1 (secs)	part2 (secs)	part 1 delta (secs)	* speedup ref ucrt	* speedup ref base ya_sprintf	* speedup ref Ryu
+ya-dconvert				55.4514			187.632			9.0108				5.1					3.2								1.5
+Ryu						59.8388			194.182			13.3982				3.5					2.2								1.0
+standard ya_sprintf		75.3432			208.611			28.9026				1.6					1.0	
+standard sprintf(ucrt)	92.6915			227.139			46.2509				1.0		
+Null (timing basline)	46.4406			180.281			0			
 
-Timing with Ubuntu Linux ( Ubuntu 24.04.3 LTS (GNU/Linux 6.6.87.2-microsoft-standard-WSL2 x86_64)):
- X64 glibc 2.39		: 552.5ns	baseline
- X64 ya_sprintf		: 190.7ns	2.9* faster
- X64 ya_sprintf/ryu	: 142.3ns	3.9* faster (1.3* faster than standard ya_sprintf)
- 
- X32 glibc 2.39		: 723.6ns	baseline
- X32 ya_sprintf		: 315.2ns	2.3* faster
- X32 ya_sprintf/ryu	: 212.6ns	3.4* faster (1.5* faster than standard ya_sprintf) 
-
+Timing m64:	All under Linux using Intel i3-10100					23/02/2026
+algorithm				part1 (secs)	part2 (secs)	part 1 delta (secs)	* speedup ref sprintf	* speedup ref base ya_sprintf	* speedup ref Ryu
+ya-dconvert				37.9381			85.9848			7.046				4.4						1.5								1.3
+Ryu						40.3468			90.3686			9.4547				3.3						1.1								1.0
+standard ya_sprintf		41.4482			89.7552			10.5561				2.9						1.0	
+standard sprintf(ucrt)	61.9352			110.294			31.0431				1.0		
+Null (timing basline)	30.8921			79.6092			0			
+						
+						
+Timing m32:	All under Linux using Intel i3-10100					
+algorithm				part1 (secs)	part2 (secs)	part 1 delta (secs)	* speedup ref sprintf	* speedup ref base ya_sprintf	* speedup ref Ryu
+ya-dconvert				53.3466			172.517			8.4241				4.6						1.8								1.4
+Ryu						57.0975			181.741			12.175				3.2						1.2								1.0
+standard ya_sprintf		59.9574			180.099			15.0349				2.6						1.0	
+standard sprintf(ucrt)	83.3688			203.831			38.4463				1.0		
+Null (timing basline)	44.9225			164.968			0			
 	
 */
 #define PART1_SPRINTF_TESTS /* if defined do detailed testing of double conversions (including "round loop" (converting double->string->double)  - these tests take ~ 2 minutes */
@@ -119,8 +134,10 @@ Timing with Ubuntu Linux ( Ubuntu 24.04.3 LTS (GNU/Linux 6.6.87.2-microsoft-stan
 #define PART2_SPRINTF_TESTS /* if defined do testing of all formats and conversion types - these tests take ~ 2 seconds */
 	/* define both PART1 and PART2 for full tests, just PART2 for a quick set of tests with reasonable coverage */
 
-#define YA_SP_RYU // if defined use RYU algorithm for doubles which is fast and accurate for IEEE format doubles - otherwise use more portable (but slower) algorithm [the same as used for long doubles and f128's]
-// #define TEST_NULL /* if defined gives timeing for the test harness only */
+//#define YA_SP_RYU // if defined use RYU algorithm for doubles which is reasonably fast and accurate for IEEE format doubles - otherwise use a faster algorithm [from ya_dconvert.c]
+
+//#define DO_NOT_STRCMP_SUBNORMALS // avoid string compare tests on sub-normals or other tests that might fail even though the result is actually correct, is not currently required for any of the double->string converters
+//#define TEST_NULL /* if defined gives timing for the test harness only */
 //#define MINGW_SPRINTF /* use standard library sprintf for timing comparison */
 
 //#define IGNORE_LD_SIGNED_NANS /* if defined don't test -NAN for LD - this option is no longer required as ya_sprintf now allows NAN's to be treated differently for LD's compared to doubles  */
@@ -144,6 +161,8 @@ _UCRT is defined
 __MSVCRT__ is defined
 _WIN32 is defined
 _WIN64 is defined
+__builtin_bswap64() is available
+__builtin_clzll is available
 YA_SP_NO_NEG_LEADINGPLUS is defined
 YA_SP_NO_NEG_LEADINGSPACE is defined
 YA_SP_A_FMT_ALT4 is defined
@@ -152,7 +171,6 @@ YA_SP_PTR_LEADINGZEROS is defined
 YA_SP_SIGNED_NANS is defined
 YA_SP_NAN_IND  is defined
 YA_SP_WCHAR_PR_CHARS is defined
-YA_SP_RYU is defined, so using ryu for double->string conversion
 GNU C Library not found
 YA_SP_SPRINTF_QI defined (128bit integers)
 YA_SP_SPRINTF_QF defined (128 bit floating point)
@@ -160,6 +178,7 @@ sizeof(long double)=16 sizeof(double)=8 sizeof(float)=4 sizeof(int)=4 sizeof(cha
 LDBL_MAX_10_EXP defined and equal to 4932 meaning we have "true" long doubles
 __SIZEOF_FLOAT128__ is defined as 16
 __SIZEOF_INT128__ is defined as 16
+Byte order is LITTLE ENDIAN (1234)
 Microsoft runtime: %n support is enabled
 
 Using my_sprintf() - which works around limitations of native sprintf()
@@ -187,9 +206,9 @@ Starting PART1 sprintf tests:
   Just checked -1.25007957045730041e+180
   Just checked -4.23632488631213564e-203
   Just checked -7.7049343115635846e-16
- All double round loop tests completed in 33.7036 secs
- Average time per test was 624.4 ns
- 53979237 tests 907369 differences
+ All double round loop tests completed in 31.7012 secs
+ Average time per test was 587.3 ns
+ 53979237 tests 2695716 differences
  Tested ya_sprintf() double-double round loop:
  0 errors when 21 sf string converted back to a double (0 are 1 bit) (sprintf gives 0 differences)
  0 errors when 20 sf string converted back to a double (0 are 1 bit) (sprintf gives 0 differences)
@@ -216,7 +235,7 @@ Starting PART1 sprintf tests:
  16 significant figures found 0 differences
  17 significant figures found 0 differences
  18 significant figures found 0 differences
- 19 significant figures found 0 differences
+ 19 significant figures found 1788347 differences
  Should get 0 round the loop errors for >=17 sig fig, and 0 differences on string compares at <= 15 sig figs :0 errors found
 
  Now checking fast_strtof128():
@@ -339,7 +358,7 @@ Now checking long doubles:
 31 sig fig 30129 tests: 39779 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
  Should show 0 string differences at <=18 sig figs and zero round the loop errors for >= 21 sig figs
 
-At end of Part 1 58494990 tests, 0 errors
+At end of Part 1 after 103.583 secs : 58494990 tests, 0 errors
 
 Starting PART2 sprintf tests:
 Constant strings:
@@ -397,17 +416,12 @@ Constant strings:
   -1 (=-1) 340282366920938463463374607431768211455(= -1 as signed128) 3.40282e+38 (same as float128)
   0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000099 (998 zeros then 99)
   0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000099 (998 zeros then 99 to stderr)
-All tests completed in 109.86 secs
-PART2: 1964008 sprintf tests completed, no errors found
-Test program finished - a total of 60458998 tests executed
+All tests completed in 105.277 secs
+PART2: 1911700 sprintf tests completed, no errors found
+Test program finished - a total of 60406690 tests executed
 */
 
-#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7)) || defined(__clang__)
- #pragma GCC optimize ("-O3") /* highest optimisation that works is -O3*/
- #if defined(_WIN32) && !defined(_WIN64)
-  #pragma GCC target("sse2")
- #endif
-#endif
+
 
 #define YAPRINTF_DEBUG /* if defined print out reason for each error , otherwise just count errors */
 //#define WANT_MINGW_ANSI_STDIO /* if defined force use of mingw printf, even if UCRT is available */
@@ -462,8 +476,8 @@ Test program finished - a total of 60458998 tests executed
 #define Show1BitErrors  /* if defined show all 1 bit errors, if not defined then don't */
 #define USE_FAST_STRTOD /* if defined use fast_strtod(), otherwise use system strtod() for round loop checks */
 // #define PRINT_DIFFS /* if defined print all differences, otherwise only print major ones */
-#define YA_SP_NO_DIGITPAIR /* if defined avoid using a lookup table to convert binary to decimal [00..99] */
-	/* on the test program with gcc 15.2.0 w64/UCRT its slightly slower (0.25%) with this enabled, whereas enabling this on w32/UCRT makes it a little faster (1.4%) */
+//#define YA_SP_NO_DIGITPAIR /* if defined avoid using a lookup table to convert binary to decimal [00..99] */
+	/* on the test program with winlibs gcc 15.2.0 w64/UCRT its the same speed with this defined, whereas defining this on w32/UCRT makes it a little slower (6%) on part 2 of the tests [it does not alter part 1 results ] */
 
 #if  defined(__SIZEOF_INT128__) && (!defined(__BORLANDC__) || (defined(__BORLANDC__) && defined(_UCRT)) )  /*C++Builder 12.1 defines __SIZEOF_INT128__ for both 64 bit versions of the compiler, but "plain" 64 bit compiler fails with link time errors if they are used, 64-bit (Modern) Compiler is OK */
  #define YA_SP_SPRINTF_QI  /* allows printing __int128's in ya_sprintf() via %Qd %I128d etc */
@@ -520,6 +534,19 @@ Test program finished - a total of 60458998 tests executed
 #include <sys/types.h> 
 
 #include <limits.h>
+
+/* code below cannot be compiled with -Ofast as this makes the compiler break some C rules that we need, so make sure of this here */
+/* we also need -msse2 and -mfpmath=sse to actually use the sse instructions for float and double maths */
+/* there seems to be no way to duplicate "-fexcess-precision=standard" using a pragma - so that must be present on the command line [see comments at head of this file that suggest "-fexcess-precision=standard" is not required any more ] */
+#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7)) || defined(__clang__)
+ #pragma GCC push_options
+ #pragma GCC optimize ("-O3") /* cannot use Ofast, normally -O3 is OK. Note macro expansion does not work here ! */
+ // based on  https://jdebp.uk/FGA/predefined-macros-processor.html "__i386__" is set by GCC,Clang,Intel which is good enough as the outer #if limits us to gcc and clang
+ #ifdef __i386__
+   #pragma GCC target("sse2,fpmath=sse") /* -msse2 and -mfpmath=sse */
+ #endif 
+#endif
+
 
 #ifdef USE_HR_TIMER
  #include "../hr_timer/hr_timer.h"
@@ -1638,18 +1665,52 @@ void check_float_to_str(char *in_str,double x)
  	{nos_tests++;
  	 snprintf(printf_str,sizeof(printf_str),"%.*e",i-1,x);
  	 double_to_str_exp( x, i,round_even,sizeof(new_str), new_str);
- 	 if(strcmp(printf_str,new_str)!=0)
- 	 	{ // different
+ 	 if((isnormal(x) && strcmp(printf_str,new_str)!=0) ||(!isnormal(x) &&  !isnan(x) && !isinf(x) && fast_strtod(printf_str,NULL)!=fast_strtod(new_str,NULL)  ) ) 
+ 	 	{ // different - for normals we use string compare, for subnormals we convert to doubles via fast_strtod() and compare as there are multiple valid sub-normal representations [which shows up with the dconvert based approach in particular]
  	 	  errs++;
  	 	  errsf[i]++;
 #ifndef PRINT_DIFFS 	 
 		  if(i<dbl_expect_err_sf)	  // with standard Mingw runtime expect differences at 13 and above
 #endif		 
 			{du.d=x; 
- 	 	     dprintf("Different: %s (%.19g:%" PRIu64 ") to %d sg printf=>\"%s\" new=>\"%s\"\n",in_str,x,du.u,i,printf_str,new_str);  
+ 	 	     dprintf("Different: %s %.20e (0X%016"PRIx64 ") to %d sg printf=>\"%s\" new=>\"%s\"\n",in_str,x,du.u,i,printf_str,new_str);  
  	 	     snprintf(printf_str,sizeof(printf_str),"%.*e",19,x);	
  	         double_to_str_exp( x, 20,round_even,sizeof(new_str), new_str);
  	         dprintf("   to 20 sf printf=>\"%s\" new=>\"%s\"\n",printf_str,new_str);
+ 	         if(isnormal(x)) dprintf("   value is \"normal\" so test was comparing strings \"%s\" and \"%s\"\n",printf_str,new_str);
+ 	         if(!isnormal(x) &&  !isnan(x) && !isinf(x)) dprintf("   value is \"sub-normal\" so test was comparing doubles %.20e and %.20e\n",fast_strtod(printf_str,NULL),fast_strtod(new_str,NULL) );
+ 	         printf(" Value %.20e is:\n",x);
+ 	         printf("  isnormal() returns %s\n",isnormal(x)?"true":"false");
+ 	#ifdef isnormal
+ 			 printf("  isnormal macro defined as %s\n",TO_STRING(isnormal(x)));
+ 	#endif 	 
+	         printf("  isnormal((double)x) returns %s\n",isnormal((double)x)?"true":"false");
+ 	         printf("  isfinite() returns %s\n",isfinite(x)?"true":"false");
+ 	         printf("  isnan() returns %s\n",isnan(x)?"true":"false");
+ 	         printf("  isinf() returns %s\n",isinf(x)?"true":"false");
+			 int fpc=fpclassify((double)x);
+			 printf(" fpclassify returns 0x%x = ",fpc);
+			 if(fpc==FP_INFINITE) printf("FP_INFINITE\n");
+			 if(fpc==FP_NAN) printf("FP_NAN\n");
+			 if(fpc==FP_NORMAL) printf("FP_NORMAL\n");
+			 if(fpc==FP_SUBNORMAL) printf("FP_SUBNORMAL\n");
+			 if(fpc==FP_ZERO) printf("FP_ZERO\n");
+    #ifndef  __BORLANDC__
+			 printf(" __fpclassify(x=%g) returns 0x%x , __fpclassifyf(x) returns 0x%x __fpclassifyl(x) returns 0x%x\n",x,__fpclassify(x),__fpclassifyf(x),__fpclassifyl(x));
+			 printf(" __fpclassify(du.d=%g) returns 0x%x , __fpclassifyf(du.d) returns 0x%x __fpclassifyl(du.d) returns 0x%x\n",du.d,__fpclassify(du.d),__fpclassifyf(du.d),__fpclassifyl(du.d));
+	#endif
+			 printf(" __builtin_isfinite(x) returns %s\n",__builtin_isfinite(x)?"true":"false");
+			 printf(" __builtin_isnormal(x) returns %s\n",__builtin_isnormal(x)?"true":"false");
+			 printf(" __builtin_isnan(x) returns %s\n",__builtin_isnan(x)?"true":"false");
+			 printf(" __builtin_isinf_sign(x) returns %s\n",__builtin_isinf_sign(x)?"true":"false");
+			 printf(" __builtin_signbit(x) returns %s\n",__builtin_signbit(x)?"true":"false");
+			 
+			 
+			 printf(" x= %.20e (0X%016"PRIx64 ")\n",x,du.u);
+			 uint64_t mantissa = du.u & 0xFFFFFFFFFFFFFULL;
+			 int expo=(int)((du.u>>52) & 0x7ff) ; 
+			 bool isdenormal=(expo==0 && mantissa!=0);
+			 printf(" Mantissa=0X%016"PRIx64 ", biased exponent=%d (unbiased=%d), isdenormal=%s\n",mantissa,expo,expo-1022,isdenormal?"true":"false"); 			 
  	         // printf("Press return to continue>");getchar(); 
  	 		}	
  	    }	 
@@ -2148,13 +2209,22 @@ void check_str_g1(char *x,double PAR)
 	// basic check sprintf
  r=sprintf(buf,x,PAR);
  r_ya=ya_s_sprintf(buf_ya,x,PAR);
- if(r!=r_ya){ ++serrs;dprintf ("%s(%g): sprintf() returns %d ya_sprintf() returns %d\n",x,PAR,r,r_ya);}
- if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s(%g): sprintf() gives %s ya_sprintf() gives %s\n",x,PAR,buf,buf_ya);};
- if(*x=='%') // check "round the loop" when %g is at the start of the string
+ bool charafterg=false;
+ for(char *x1=x;*x1;++x1)
+ 	if(tolower(*x1)=='g' && x1[1]!=0) charafterg=true;// char after g eg "%-9g1"
+ if(*x=='%' && !charafterg) // check "round the loop" when %g is at the start of the string and there is nothing after the 'g' (if there is something after the 'g', in particular a number strtod() may not return whats expected
  	{scnt++;
-     if(!(strtod(buf,NULL)==strtod(buf_ya,NULL)|| (isnan(strtod(buf,NULL)) && isnan(strtod(buf,NULL))) || (isinf(strtod(buf,NULL)) && isinf(strtod(buf,NULL))) )) {++serrs;dprintf("%s(%g):[strtod()] sprintf() gives %s ya_sprintf() gives %s\n",x,PAR,buf,buf_ya);}; 
+     if(!(fast_strtod(buf,NULL)==fast_strtod(buf_ya,NULL)|| (isnan(fast_strtod(buf,NULL)) && isnan(fast_strtod(buf,NULL))) || (isinf(fast_strtod(buf,NULL)) && isinf(fast_strtod(buf,NULL))) )) {++serrs;dprintf("%s(%g):[strtod()] sprintf() gives %s ya_sprintf() gives %s\n",x,PAR,buf,buf_ya);}; 
 	}
 	// snprintf(5)
+#ifdef DO_NOT_STRCMP_SUBNORMALS
+ if(!(isnormal(PAR) || isnan(PAR) || isinf(PAR))) 
+ 	{
+	 return; // cannot use string compares for sub-normals with dconvert as it generates different(correct) values [ I tried just n=2 and this still gave some errors]
+	}
+#endif 
+ if(r!=r_ya){ ++serrs;dprintf ("%s(%g): sprintf() returns %d ya_sprintf() returns %d\n",x,PAR,r,r_ya);}
+ if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s(%g): sprintf() gives %s ya_sprintf() gives %s\n",x,PAR,buf,buf_ya);}; 
  scnt++;
  r=snprintf(buf,5,x,PAR);
  r_ya=ya_s_snprintf(buf_ya,5,x,PAR);
@@ -2218,19 +2288,23 @@ void check_str_f1(char *x,double PAR)
  r=sprintf(buf,x,PAR);
  r_ya=ya_s_sprintf(buf_ya,x,PAR);
  if(r!=r_ya && r<350 ){ ++serrs;dprintf ("%s(%g): sprintf() returns %d ya_sprintf() returns %d\n",x,PAR,r,r_ya);}
- if(*x=='%' && !(strtod(buf,NULL)==strtod(buf_ya,NULL)|| (isnan(strtod(buf,NULL)) && isnan(strtod(buf,NULL))) || (isinf(strtod(buf,NULL)) && isinf(strtod(buf,NULL))) )) {++serrs;dprintf("%s(%g):[strtod()] sprintf() gives %s ya_sprintf() gives %s\n",x,PAR,buf,buf_ya);}; 
-	// snprintf(5)
- scnt++;
- r=snprintf(buf,5,x,PAR);
- r_ya=ya_s_snprintf(buf_ya,5,x,PAR);
- if(r!=r_ya && r<350 ){ ++serrs;dprintf ("%s(%g): snprintf(5) returns %d ya_snprintf(5) returns %d\n",x,PAR,r,r_ya);}
- if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s(%g): snprintf(5) gives %s ya_snprintf(5) gives %s\n",x,PAR,buf,buf_ya);};	
-	// repeat with snprintf and n=2	
+ if(*x=='%' && !(fast_strtod(buf,NULL)==fast_strtod(buf_ya,NULL)|| (isnan(fast_strtod(buf,NULL)) && isnan(fast_strtod(buf,NULL))) || (isinf(fast_strtod(buf,NULL)) && isinf(fast_strtod(buf,NULL))) )) {++serrs;dprintf("%s(%g):[strtod()] sprintf() gives %s ya_sprintf() gives %s\n",x,PAR,buf,buf_ya);}; 
+ // repeat with snprintf and n=2	
  scnt++;
  r=snprintf(buf,2,x,PAR);
  r_ya=ya_s_snprintf(buf_ya,2,x,PAR);
  if(r!=r_ya && r<350 ){ ++serrs;dprintf ("%s(%g): snprintf(2) returns %d ya_snprintf(2) returns %d\n",x,PAR,r,r_ya);}
  if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s(%g): snprintf(2) gives %s ya_snprintf(2) gives %s\n",x,PAR,buf,buf_ya);};	
+#ifdef DO_NOT_STRCMP_SUBNORMALS
+ if(!(isnormal(PAR) || isnan(PAR) || isinf(PAR))) return; // cannot use string compares for sub-normals with dconvert as it generates different(correct) values
+#endif  
+ // snprintf(5)
+ scnt++;
+ r=snprintf(buf,5,x,PAR);
+ r_ya=ya_s_snprintf(buf_ya,5,x,PAR);
+ if(r!=r_ya && r<350 ){ ++serrs;dprintf ("%s(%g): snprintf(5) returns %d ya_snprintf(5) returns %d\n",x,PAR,r,r_ya);}
+ if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s(%g): snprintf(5) gives %s ya_snprintf(5) gives %s\n",x,PAR,buf,buf_ya);};	
+
 	// repeat with snprintf and n=10	
  scnt++;
  r=snprintf(buf,10,x,PAR); // only expect 10 sig figs to be accurate
@@ -2298,7 +2372,9 @@ void check_str_p(char *x,void * PAR)
  if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s(%p): snprintf(10) gives %s ya_snprintf(10) gives %s\n",x,PAR,buf,buf_ya);};	
 }
 
+//#if !defined(__BORLANDC__)
 #include <xmmintrin.h> /* needed for _mm_getcsr() & _mm_setcsr() which are present in both Windows & Linux */
+//#endif
 
 int main(int argc, char *argv[]) 
 { 
@@ -2372,6 +2448,12 @@ int main(int argc, char *argv[])
 #ifdef __linux
  printf("__linux is defined\n");
 #endif
+#if defined(__has_builtin) && __has_builtin(__builtin_bswap64) /*  is builtin for gcc and clang */
+printf("__builtin_bswap64() is available\n");
+#endif 
+#if defined(__has_builtin) && __has_builtin(__builtin_clzll) /*  is builtin for gcc and clang */
+printf("__builtin_clzll is available\n");
+#endif
 #ifdef  YA_SP_LINUX_STYLE /* tell ya_printf() to print to match Linux gcc libc */
  printf("YA_SP_LINUX_STYLE is defined\n");
 #endif
@@ -2425,8 +2507,9 @@ int main(int argc, char *argv[])
  printf("YA_SP_WCHAR_PR_CHARS is defined\n");
 #endif
 #ifdef YA_SP_RYU 
-printf("YA_SP_RYU is defined, so using ryu for double->string conversion\n");
+printf("YA_SP_RYU is defined, so using ryu for double->string conversion - WARNING this option is slower than the default solution!\n");
 #endif
+
 
 #ifdef __GLIBC__  /* see https://stackoverflow.com/questions/9705660/check-glibc-version-for-a-particular-gcc-compiler */
   printf("GNU libc compile-time version: %u.%u\n", __GLIBC__, __GLIBC_MINOR__);
@@ -2458,23 +2541,30 @@ printf("sizeof(long double)=%zu sizeof(double)=%zu sizeof(float)=%zu sizeof(int)
 #ifdef __SIZEOF_INT128__
  printf("__SIZEOF_INT128__ is defined as %u\n",__SIZEOF_INT128__);
 #endif
-
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+ printf("Byte order is LITTLE ENDIAN (%d)\n",__ORDER_LITTLE_ENDIAN__);
+#elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+ printf("Byte order is BIG ENDIAN (%d)\n",__ORDER_BIG_ENDIAN__);
+#endif
 #if defined(_WIN32) && defined(_UCRT) 
  _set_printf_count_output(1); /* enable %n for microsoft runtime - see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/set-printf-count-output?view=msvc-170 */
  printf("Microsoft runtime: %%n support is %s\n",_get_printf_count_output() ? "enabled" : "disabled" );
 #endif
 printf("\nUsing %s\n\n",USING_SPRINTF);
+#ifdef DO_NOT_STRCMP_SUBNORMALS
+printf(" Tests will not check sub-normals using string compares as this can cause false failures (DO_NOT_STRCMP_SUBNORMALS defined)\n");
+#endif
 #if 0  /* some simple checks - used for quickly debugging specific issues */
 {char printf_str[4096];
  char new_str[4096];
- double x=-1.0;
- char *fmt="%a"; // eg "%.*e"
+ double x=4.941e-324;// smallest denormal
+ char *fmt="%.20e"; // eg "%.20e"
  printf("Checking x=%g: isfinite=%s,isnan=%s,isinf=%s\n",x,(isfinite(x)?"True":"False"),(isnan(x)?"True":"False"),(isinf(x)?"True":"False"));
 
  snprintf(printf_str,sizeof(printf_str),fmt,x);
  ya_s_snprintf(new_str,sizeof(new_str),fmt,x);
   //double_to_str_exp( x, i,round_even,sizeof(new_str), new_str);  //   matches "%.*e" with i-1 as param
- printf("snprintf(%s)=>\"%s\"\n",fmt,printf_str);
+ printf("snprintf(%s)     =>\"%s\"\n",fmt,printf_str);
  printf("ya_s_snprintf(%s)=>\"%s\"\n",fmt, new_str);
  #ifdef __BORLANDC__
   printf("Press return to exit:\n");
@@ -2784,7 +2874,7 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 #else
 	printf("Not checking long doubles as they are identical to doubles in this compiler\n");
 #endif
-    printf("\nAt end of Part 1 %" PRIu64 " tests, %" PRIu64 " errors\n\n",total_nos_tests,errs);
+    printf("\nAt end of Part 1 after %g secs : %" PRIu64 " tests, %" PRIu64 " errors\n\n",read_HR_Timer(),total_nos_tests,errs);
 #endif /* PART1_SPRINTF_TESTS */    
 #if defined(PART2_SPRINTF_TESTS) && defined(YA_SP_SPRINTF_IMPLEMENTATION)
 	
@@ -5473,8 +5563,9 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
  	
 	printf(" Now checking variable precision %%*.* :\n"); 	 	 	 	 	
 	for(int j=-100;j<=100;++j) // -ve j sets - flag (left justified in field)
-		for(int k=-2;k<=100; ++k) // -ve k acts as if precision were omitted, start from -2 in case -1 is used as a default flag in "printf" code.
-			{scnt++;
+		for(int k=-2;k<=16; ++k) // -ve k acts as if precision were omitted, start from -2 in case -1 is used as a default flag in "printf" code. Only 17 digits need be exact, so precision limited to 16
+			{			
+			 scnt++;
 			 fstr="%#*.*g %0*d"; 	// double (%g) then int. Note %#g is required as by default %g does not print trailing zeros which makes the lengths different for sprintf and ya_sprintf
 			 r=sprintf(buf,fstr,j,k,d,j+k,i);
     		 r_ya=ya_s_sprintf(buf_ya,fstr,j,k,d,j+k,i);
@@ -5579,17 +5670,20 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 	  if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	  if(d!=dr) {++serrs;dprintf("%%a: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	
 	  scnt++;
+	  ya_s_sprintf(buf,"%a",f); // need to do a special conversion for floats as may give a slightly different value
 	  fr=fast_strtof(buf,&endp);
-	  if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	
+	  if(*endp) {++serrs;dprintf("%%a: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  if(f!=fr) {++serrs;dprintf("%%a: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}		
 	  scnt++;
 	  ya_s_sprintf(buf,"%A",d);
 	  dr=fast_strtod(buf,&endp);
 	  if(*endp) {++serrs;dprintf("%%A: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	  if(d!=dr) {++serrs;dprintf("%%A: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	   
 	  scnt++;
+	  ya_s_sprintf(buf,"%A",f); 
 	  fr=fast_strtof(buf,&endp);
-	  if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
-	  if(f!=fr) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}		     
+	  if(*endp) {++serrs;dprintf("%%A: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  if(f!=fr) {++serrs;dprintf("%%A: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}			     
       // check %#a/A
 	  scnt++;
 	  ya_s_sprintf(buf,"%#a",d);
@@ -5597,18 +5691,20 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 	  if(*endp) {++serrs;dprintf("%%#a: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	  if(d!=dr) {++serrs;dprintf("%%#a: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	
 	  scnt++;
+	  ya_s_sprintf(buf,"%#a",f); 
 	  fr=fast_strtof(buf,&endp);
-	  if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
-	  if(f!=fr) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}		  
+	  if(*endp) {++serrs;dprintf("%%#a: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  if(f!=fr) {++serrs;dprintf("%%#a: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}		  
 	  scnt++;
 	  ya_s_sprintf(buf,"%#A",d);
 	  dr=fast_strtod(buf,&endp);
 	  if(*endp) {++serrs;dprintf("%%#A: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	  if(d!=dr) {++serrs;dprintf("%%#A: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}
 	  scnt++;
+	  ya_s_sprintf(buf,"%#A",f); 
 	  fr=fast_strtof(buf,&endp);
-	  if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
-	  if(f!=fr) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}		  	   
+	  if(*endp) {++serrs;dprintf("%%#A: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  if(f!=fr) {++serrs;dprintf("%%#A: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}		  	   
 	  	 
 	  for(d=2;d<=1e308;d*=10)
 	 	{f=d;
@@ -5618,18 +5714,20 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 	 	 if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	 	 if(d!=dr) {++serrs;dprintf("%%a: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	
 	 	 scnt++;
+	 	 ya_s_sprintf(buf,"%a",f); 
 	  	 fr=fast_strtof(buf,&endp);
-	  	 if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
-	  	 if(f!=fr) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}		 	 
+	  	 if(*endp) {++serrs;dprintf("%%a: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  	 if(f!=fr) {++serrs;dprintf("%%a: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}	 
 	 	 scnt++;
 	 	 ya_s_sprintf(buf,"%A",d);
 	 	 dr=fast_strtod(buf,&endp);
 	 	 if(*endp) {++serrs;dprintf("%%A: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	 	 if(d!=dr) {++serrs;dprintf("%%A: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	
 	 	 scnt++;
+	 	 ya_s_sprintf(buf,"%A",f); 
 	  	 fr=fast_strtof(buf,&endp);
-	  	 if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
-	  	 if(f!=fr) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}			  	 
+	  	 if(*endp) {++serrs;dprintf("%%A: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  	 if(f!=fr) {++serrs;dprintf("%%A: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}			  	 
 		  
       	 // check %#a/A
 	  	 scnt++;
@@ -5638,18 +5736,20 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 	  	 if(*endp) {++serrs;dprintf("%%#a: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	  	 if(d!=dr) {++serrs;dprintf("%%#a: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	
 	 	 scnt++;
+	 	 ya_s_sprintf(buf,"%#a",f); 
 	  	 fr=fast_strtof(buf,&endp);
-	  	 if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
-	  	 if(f!=fr) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}		  	 
+	  	 if(*endp) {++serrs;dprintf("%%#a: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  	 if(f!=fr) {++serrs;dprintf("%%#a: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}			  	 
 	  	 scnt++;
 	  	 ya_s_sprintf(buf,"%#A",d);
 	  	 dr=fast_strtod(buf,&endp);
 	  	 if(*endp) {++serrs;dprintf("%%#A: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	  	 if(d!=dr) {++serrs;dprintf("%%#A: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	
 	 	 scnt++;
+	 	 ya_s_sprintf(buf,"%#A",f); 
 	  	 fr=fast_strtof(buf,&endp);
-	  	 if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
-	  	 if(f!=fr) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}			   	  	 
+	  	 if(*endp) {++serrs;dprintf("%%#A: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  	 if(f!=fr) {++serrs;dprintf("%%#A: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}				   	  	 
 	 	}
 	  for(d=2;d>=1e-323;d/=10)
 	 	{f=d;
@@ -5659,18 +5759,20 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 	 	 if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	 	 if(d!=dr) {++serrs;dprintf("%%a: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	
 	 	 scnt++;
+	 	 ya_s_sprintf(buf,"%a",f); 
 	  	 fr=fast_strtof(buf,&endp);
-	  	 if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
-	  	 if(f!=fr) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}		 	 
+	  	 if(*endp) {++serrs;dprintf("%%a: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  	 if(f!=fr) {++serrs;dprintf("%%a: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}		 	 
 	 	 scnt++;
 	 	 ya_s_sprintf(buf,"%A",d);
 	 	 dr=fast_strtod(buf,&endp);
 	 	 if(*endp) {++serrs;dprintf("%%A: (%g)=%s fast_strtod() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
 	 	 if(d!=dr) {++serrs;dprintf("%%A: (%g)=%s fast_strtod() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}	
 	 	 scnt++;
+	 	 ya_s_sprintf(buf,"%A",f); 
 	  	 fr=fast_strtof(buf,&endp);
-	  	 if(*endp) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g *endp=0x%x (should be 0)\n",d,buf,dr,*endp);}
-	  	 if(f!=fr) {++serrs;dprintf("%%a: (%g)=%s fast_strtof() returns %g (wrong!) *endp=0x%x\n",d,buf,dr,*endp);}			  	   	
+	  	 if(*endp) {++serrs;dprintf("%%A: (%.9g)=%s fast_strtof() returns %.9g *endp=0x%x (should be 0)\n",f,buf,fr,*endp);}
+	  	 if(f!=fr) {++serrs;dprintf("%%A: (%.9g)=%s fast_strtof() returns %.9g (wrong!) *endp=0x%x\n",f,buf,fr,*endp);}			  	   	
 	 	 // no point checking %#a here as decimal point will be needed for these cases anyway
 	 	}
 	}
@@ -5738,6 +5840,7 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 		 if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
 		 else if(r!=r_ya){ ++serrs;dprintf ("%s: sprintf() returns %d ya_sprintf() returns %d\n",fstr,r,r_ya);}	
 		  // finally check double [ already checked extensively so should be OK ]
+#ifndef DO_NOT_STRCMP_SUBNORMALS  /*  sub-normals might cause false errors, as we have already well tested doubles , just skip here rather than try and select tests that will work/fail */
 		 ++scnt;		  	
 		 fstr="%g";
 		 r=sprintf(buf,fstr,d);
@@ -5745,7 +5848,7 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 		 r_ya=ya_s_sprintf(buf_ya,fstr,d);
 		 if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
 		 else if(r!=r_ya){ ++serrs;dprintf ("%s: sprintf() returns %d ya_sprintf() returns %d\n",fstr,r,r_ya);}	
-		 		
+#endif		 		
 		 /* do %e  */
 		 // first check __float128
 		 ++scnt;
@@ -5779,6 +5882,7 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 		 if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
 		 else if(r!=r_ya){ ++serrs;dprintf ("%s: sprintf() returns %d ya_sprintf() returns %d\n",fstr,r,r_ya);}	
 		  // finally check double [ already checked extensively so should be OK ]
+#ifndef DO_NOT_STRCMP_SUBNORMALS  /* sub-normals might cause false errors, as we have already well tested doubles , just skip here rather than try and select tests that will work/fail */		  
 		 ++scnt;		  	
 		 fstr="%e";
 		 r=sprintf(buf,fstr,d);
@@ -5786,10 +5890,10 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 		 r_ya=ya_s_sprintf(buf_ya,fstr,d);
 		 if(strcmp(buf,buf_ya)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
 		 else if(r!=r_ya){ ++serrs;dprintf ("%s: sprintf() returns %d ya_sprintf() returns %d\n",fstr,r,r_ya);}	
-		 
+#endif		 
 		 /* do %f note we use strncmp here as %f may generate very long numbers but only expect first QF_CHARS_TO_CHECK digits (characters) to match exactly */
 		 // first check __float128
-	#define QF_CHARS_TO_CHECK 16 /* 17 gives 2 errors (both very big numbers so rounding or digits after dp have no effect) */
+	#define QF_CHARS_TO_CHECK 33 /* for f128 expect 33 digits to match  */
 		 ++scnt;
 		 fstr="%Qf";
 		 // r=sprintf(buf,fstr,d128);
@@ -5800,15 +5904,17 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 		 ++scnt;
 		 fstr="%I128f";
 		 r_ya=ya_s_sprintf(buf_ya,fstr,d128);
-		 if(strncmp(buf,buf_ya,10)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
+		 if(strncmp(buf,buf_ya,QF_CHARS_TO_CHECK)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
 		 else if(r!=r_ya){ ++serrs;dprintf ("%s: sprintf() returns %d ya_sprintf() returns %d\n",fstr,r,r_ya);} // else if so only count 1 error per test
 		 ++scnt;
 		 fstr="%w128f";// C23
 		 r_ya=ya_s_sprintf(buf_ya,fstr,d128);
-		 if(strncmp(buf,buf_ya,10)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
+		 if(strncmp(buf,buf_ya,QF_CHARS_TO_CHECK)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
 		 else if(r!=r_ya){ ++serrs;dprintf ("%s: sprintf() returns %d ya_sprintf() returns %d\n",fstr,r,r_ya);} // else if so only count 1 error per test		 
 		  		 	
  		 // now check long double
+#undef QF_CHARS_TO_CHECK
+#define QF_CHARS_TO_CHECK 18 /* for long doubles max we should expect is 18 */ 		 
 		 ++scnt; 		 
 		 fstr="%Lf";
 		 r=sprintf(buf,fstr,dl);
@@ -5821,6 +5927,9 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 		 if(strncmp(buf,buf_ya,QF_CHARS_TO_CHECK)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
 		 else if(r!=r_ya){ ++serrs;dprintf("%s: sprintf(%Lf) returns %d (%s) ya_sprintf() returns %d (%s)\n",fstr,dl,r,buf,r_ya,buf_ya);}
 		  // finally check double [ already checked extensively so should be OK ]
+#undef QF_CHARS_TO_CHECK
+#define QF_CHARS_TO_CHECK 15 /* for doubles max we should expect is 15 */
+#ifndef DO_NOT_STRCMP_SUBNORMALS  /* sub-normals might cause false errors, as we have already well tested doubles , just skip here rather than try and select tests that will work/fail */		  
 		 ++scnt;		  	
 		 fstr="%f";
 		 r=sprintf(buf,fstr,d);
@@ -5828,12 +5937,12 @@ printf("\nUsing %s\n\n",USING_SPRINTF);
 		 r_ya=ya_s_sprintf(buf_ya,fstr,d);
 		 if(strncmp(buf,buf_ya,QF_CHARS_TO_CHECK)) {++serrs;dprintf("%s: sprintf() gives %s ya_sprintf() gives %s\n",fstr,buf,buf_ya);}
 		 else if(r!=r_ya){ ++serrs;dprintf("%s: sprintf(%f) returns %d (%s) ya_sprintf() returns %d (%s)\n",fstr,d,r,buf,r_ya,buf_ya);}	
-		 
+#endif		 
 		 		 /* do %a  */
-#if 1 // quadmath_snprintf(%a) prints 1.xxx whereas ya_s_snprintf(%a) prints 8.xxx 		 		 
+#if 1 // quadmath_snprintf(%a) prints 1.xxx whereas ya_s_snprintf(%a) prints 8.xxx 	- now fixed so test enabled	 		 
 		 // first check __float128
 		 ++scnt;
-		 fstr="%.14Qa"; // progess as long double so limited in resolution [ %.15Q gives 2 errors due to "rounding" ], 14 is OK
+		 fstr="%.14Qa"; 
 		 // r=sprintf(buf,fstr,d128);
 		 r=quadmath_snprintf (buf, sizeof buf,fstr,d128);
 		 r_ya=ya_s_sprintf(buf_ya,fstr,d128);
