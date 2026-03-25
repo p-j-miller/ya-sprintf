@@ -13,6 +13,9 @@ Version 2.0
 						   and may be used freely in accordance with the Apache 2.0 license or the Boost 1.0 license.
 							Using RYU adds ~ 100kBytes to the executable size (mainly in tables).
 							RYU is ~ 1.5* faster on average than the standard ya_sprintf code to printf doubles (see main.c for for details on timing)
+Version 2.1
+			21/3/2026	- ya-dconvert now used for double->string which is faster than Ryu. Enabled by default
+						- long double and float128 output optimised (faster) using learning from ya-dconvert
 										
 This started with the code from  stb_sprintf (v1.08) which is a public domain snprintf() implementation (http://github.com/nothings/stb)
 which itself was originally written by Jeff Roberts / RAD Game Tools, 2015/10/20.
@@ -53,12 +56,12 @@ main.c	- a test program that checks all functions of ya_sprintf.h (supplied with
 my_printf.c - a version of printf family of functions that tries to work around known bugs in the system printf - it also does a  reasonable check of the format specifier string.
 
 To compile the test program under Linux try (tested on Ubuntu 24.04.3 LTS (GNU/Linux 6.6.87.2-microsoft-standard-WSL2 x86_64) ):
- gcc -m64 -Wall -Ofast -fexcess-precision=standard -I. -D_FORTIFY_SOURCE=1 main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c -lquadmath -lm -o test
+ gcc -m64 -Wall -Ofast  -I. -D_FORTIFY_SOURCE=1 main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ya-dconvert.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -lm -o test
  
  then ./test to run
  
  Under Windows with WinLibs gcc 15.2.0 (please check the paths to the compiler and the other files are correct for your setup/directory structure): 
-  C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -Wall -m64 -fexcess-precision=standard -Ofast  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
+  C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -Wall -m64  -Ofast  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ya-dconvert.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
    
   then test.exe to run
   
@@ -318,7 +321,7 @@ Note YA_SP_SPRINTF_LD  is not used in this version - long doubles are always sup
 #define YA_SP_SPRINTF_QI // support int128 output
 #define YA_SP_SPRINTF_QF // support float128 output
 #define YA_SP_SPRINTF_Q // support both int128 and float128 output ( compiler must support these types! ) [ for backwards compatibility ]
-#define YA_SP_NO_DIGITPAIR // selects an alternative way to convert numbers to ascii characters. This may or may not be faster. Its likely this option will be removed in future releases.
+#define YA_SP_NO_DIGITPAIR // selects an alternative way to convert numbers to ascii characters. This may or may not be faster. Its likely this option will be removed in future releases. At present its slower for w32 and unchanged for w64 if this is defined.
 #define YA_SP_LINUX_STYLE // make subtle changes to the output to match gcc 13.3.0 under Ubuntu . By default matches winlibs GCC 15.2.0 under windows 10 with #define __USE_MINGW_ANSI_STDIO 1
 #define YA_SP_NO_NEG_LEADINGPLUS // if defined ignore %+ for unsigned conversions
 #define YA_SP_NO_NEG_LEADINGSPACE // if defined ignore %  (% space) for unsigned conversions
@@ -338,6 +341,7 @@ Note YA_SP_SPRINTF_LD  is not used in this version - long doubles are always sup
 #define YA_SP_SPRINTF_EXP3 // min 3 digits in exponent (otherwise min of 2 digits in exponent) 
 #define YA_SP_WCHAR_PR_CHARS // if defined the precision for wide strings (%ls or %S) is in characters rather than bytes - C standard says bytes (which matches Linux), but Microsoft runtimes use characters
 #define YA_SP_RYU // if defined use RYU algorithm for doubles which is fast and accurate for IEEE format doubles - otherwise use more portable (but slower) algorithm [the same as used for long doubles and f128's] - note ryu adds about 100kb of tables to the executable.
+
 */
 
 #ifdef YA_SP_LINUX_STYLE /* LINUX STYLE just sets other defines (left for backwards compatibility) - set to match Ubuntu 24.04.3 LTS (GNU/Linux 6.6.87.2-microsoft-standard-WSL2 x86_64) with gcc 13.3.0 */
@@ -380,6 +384,7 @@ Note YA_SP_SPRINTF_LD  is not used in this version - long doubles are always sup
 #if defined(__SIZEOF_FLOAT128__) && defined(YA_SP_SPRINTF_QF ) && !defined(__BORLANDC__) /* if compiler supports __float128  and support for this is requested YA_SP_SPRINTF_QF */
  #include <quadmath.h> /* see https://gcc.gnu.org/onlinedocs/libquadmath/index.html#SEC_Contents - also needs quadmath library linking in */
 #endif
+#include "ya-dconvert.h"
 
 #ifndef YA_SP_SPRINTF_MIN
 #define YA_SP_SPRINTF_MIN 512 // how many characters per callback
@@ -482,14 +487,20 @@ YA_S__PUBLICDEF int YA_SP_SPRINTF_DECORATE(printf) (const char *format, ...)
 #include "../double-double/double-double.h"
 
 
-// define the level of gcc optimisations used as we cannot use Ofast as with gcc 9.3.0 on ubuntu this gives incorrect results around NAN's even in main test program
+/* code below cannot be compiled with -Ofast as this makes the compiler break some C rules that we need (even use NAN etc) , so make sure of this here */
+/* code below cannot be compiled with -Ofast as this makes the compiler break some C rules that we need, so make sure of this here */
+/* we also need -msse2 and -mfpmath=sse to actually use the sse instructions for float and double maths */
+/* there seems to be no way to duplicate "-fexcess-precision=standard" using a pragma - so that must be present on the command line [see comments at head of this file that suggest "-fexcess-precision=standard" is not required any more ] */
 #if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7)) || defined(__clang__)
  #pragma GCC push_options
- #pragma GCC optimize ("-O3") /* cannot use Ofast, normally -O3 is OK. Note macro expansion does not work here ! */
- #if defined(_WIN32) && !defined(_WIN64)
-  #pragma GCC target("sse2")
- #endif
+ #pragma GCC optimize ("-O2") /* cannot use Ofast, normally -O3 is OK. Note macro expansion does not work here ! */
+ // based on  https://jdebp.uk/FGA/predefined-macros-processor.html "__i386__" is set by GCC,Clang,Intel which is good enough as the outer #if limits us to gcc and clang
+ #ifdef __i386__
+   #pragma GCC target("sse2,fpmath=sse") /* -msse2 and -mfpmath=sse */
+ #endif 
 #endif
+
+
 
 
 #ifndef YA_SP_SPRINTF_NOFLOAT
@@ -529,20 +540,7 @@ typedef __int128_t ya_s__int128_t;
 
 static char ya_s__period = '.';
 static char ya_s__comma = ',';
-#ifndef YA_SP_NO_DIGITPAIR
-static struct
-{
-   uint16_t temp; // force next field to be 2-byte aligned
-   char pair[201];
-} ya_s__digitpair =
-{
-  0,
-   "00010203040506070809101112131415161718192021222324"
-   "25262728293031323334353637383940414243444546474849"
-   "50515253545556575859606162636465666768697071727374"
-   "75767778798081828384858687888990919293949596979899"
-};
-#endif
+
 YA_S__PUBLICDEF void YA_SP_SPRINTF_DECORATE(set_separators)(char pcomma, char pperiod)
 {
    ya_s__period = pperiod;
@@ -1792,6 +1790,17 @@ a_pr_axp:
          n = dp>=1000?6:((dp >= 100) ? 5 : 4);
 #endif 
          tail[0] = (char)n;
+#if 0 /* using ya_utoi2/4 here is slower at least for winlibs gcc 15.2.0 - w64 */
+		// need to put exponent digits at tail[3] up
+		// number of digits in exponent is n-2
+		if(n==4) ya_uitoa2(tail+3,dp);// most common - 2 digit exponent
+		else if(n==5) 
+			{// 3 digit exponent
+			 tail[3]='0'+dp/100;
+			 ya_uitoa2(tail+4,dp%100);
+			} 
+		 else ya_uitoa4(tail+3,dp);// 4 digit exponent	(least likley)		
+#else
          for (;;) {
             tail[n] = '0' + dp % 10;
             if (n <= 3)
@@ -1799,6 +1808,7 @@ a_pr_axp:
             --n;
             dp /= 10;
          }
+#endif         
          cs = 1 + (3 << 24); // how many tens
          goto flt_lead;
          
@@ -2273,7 +2283,7 @@ a_pr_axp:
 #else
 				  // original code using a table lookup 2 digits at a time
                   s -= 2;
-                  *(uint16_t *)s = *(uint16_t *)&ya_s__digitpair.pair[(n % 100) * 2];
+				  ya_uitoa2(s,n%100);                 
                   n /= 100;
 #endif                  
                } while (n);
@@ -2326,7 +2336,7 @@ a_pr_axp:
 #else              
 				  // original code using table lookup to convert 2 digits at a time
                   s -= 2;    
-                  *(uint16_t *)s = *(uint16_t *)&ya_s__digitpair.pair[(n % 100) * 2];
+				  ya_uitoa2(s,n%100);                
                   n /= 100;
 #endif                  
                } while (n);
@@ -2720,16 +2730,18 @@ YA_S__PUBLICDEF int YA_SP_SPRINTF_DECORATE(printf) (const char *format, ...)
 uint64_t nos_10_correct=0,nos_10_wrong=0;
 #endif
 
-#ifdef YA_SP_RYU /* use ryu algorithm - which should be fast and accurate */
+#if defined(YA_SP_RYU)
  // this code is based on function d2exp_buffered_n_ya_sprintf() in d2fixed_ya_sprintf.c
- // This function was added by Peter Miller, but heavily leaverages the existing ryu code.
- #include "ryu/d2fixed_ya_sprintf.h"
-
+  #include "ryu/d2fixed_ya_sprintf.h"
+  #warning "YA_SP_RYU option is no longer recommended as the default conversion is faster"
+ #else
+  #include "ya-dconvert.h"
+  #define d2exp_buffered_n_ya_sprintf(mantissa,expo, digits, out, dec_exp) ya_d2exp_buffered_n_ya_sprintf((mantissa),(expo), (digits), (out), (dec_exp))
+#endif
  /* returns sign of v */
 static bool ya_s__DD_to_str(char const **start, uint32_t *len, char *out, int32_t *decimal_pos, double v, uint32_t frac_digits)
 { // 1st deal with the various special cases
- /* assume ieee format doubles (which is what ryu does */
- /* assume ieee format double */
+ /* assume ieee format doubles  */
  union {
     double real_d;
     uint64_t bits_d;
@@ -2737,7 +2749,11 @@ static bool ya_s__DD_to_str(char const **start, uint32_t *len, char *out, int32_
     // Decode bits into sign, mantissa, and exponent.
  const bool ng = (u.bits_d  & ((uint64_t)1<<63)) != 0;// true if v is negative 1<<63 as sign bit is the msb 
  const uint64_t mantissa = u.bits_d & 0xFFFFFFFFFFFFFULL;
+ #if 1
+ const int32_t expo=(int)((u.bits_d<<1) >>53) ;// this is slightly faster way to extract exponent 
+ #else
  const int32_t expo=(int)((u.bits_d>>52) & 0x7ff) ; 
+#endif
  if(expo==0x7ff)
  	{// nan or inf
  	 if(mantissa) // nan
@@ -2797,18 +2813,13 @@ static bool ya_s__DD_to_str(char const **start, uint32_t *len, char *out, int32_
   	 int32_t tens=expo-1022;// convert to a "proper" (2^x) signed exponent (tens will eventually be 10^x exponent)
 	 if(tens==-1022)
 	 	{// find correct exponent for denormalised numbers
-	#if 1
-		 tens+=12-__builtin_clzll(mantissa);// see https://gcc.gnu.org/onlinedocs/gcc/Bit-Operation-Builtins.html#index-_005f_005fbuiltin_005fclzll - this is normally much faster than the code below as the builtin is normally a single CPU instruction.	 
-	#else
-	 	 uint64_t mant=mantissa;
-	 	 while((mant & ((uint64_t)1<<51)) == 0) { mant<<=1;tens--;}
-	#endif
+	 	 tens+=12-ya_clz(mantissa);
 	 	}
 	 // log10 estimate 
 	 tens=(tens <= 0) ? (((tens * 78913) / 262144)-1) : (((tens * 78913) / 262144) ); //  78913/2^18=0.301029205322265625 (2^18= 262,144), log10(2)=0.30102999566398119521373889472449
 	 digits=(int32_t)(tens + (int32_t)frac_digits); 
   	 if(digits>18) digits=18; // 18 is a sensible limit (any other value gives part 2 errors) - this must be limited - the "main code" will add extra zero's if the user asks for something "silly".
-  	 if(digits<0) digits=0;	 
+  	 if(digits<0) digits=0;	   	 
   	 *len=d2exp_buffered_n_ya_sprintf(mantissa,expo, digits, out, &dec_exp);// 1st call , 86% of the time will be correct (on test program), the remainder takes a 2nd attempt
   	 // printf("tens=%d dec_exp=%d\n",tens,dec_exp);
   	 if(tens!=dec_exp) 
@@ -2838,424 +2849,7 @@ static bool ya_s__DD_to_str(char const **start, uint32_t *len, char *out, int32_
    return ng;  
 }
 
-#else
-// It uses basically the same algorithm as the LD & float128 versions below, but using double-double and a uint64_t for the mantissa (the others use a u2_64 for the mantissa).
-// The conversion method is based on Wirth book "Algorithms+Data Structures=Programs" pp 47-49, but with a different method for rounding and using double-doubles for accuracy.
-// This version is ~ the same speed as the previous "long double" version (but that now gives 3 errors with the test program), and significantly faster than the previous double-double version (which also now gives errors with the test program).
-      
-static bool ya_s__DD_to_str(char const **start, uint32_t *len, char *out, int32_t *decimal_pos, double v, uint32_t frac_digits)
-{
- int32_t tens,d,digits;
-#if 1 /* if 1 assume ieee format double (basically same "front end" as used above), if 0 use portable C code which is slighly slower but gives identical results */
- union {
-    double real_d;
-    uint64_t bits_d;
-  } u = { v };
-    // Decode bits into sign, mantissa, and exponent.
- const bool ng = (u.bits_d  & ((uint64_t)1<<63)) != 0;// true if v is negative 1<<63 as sign bit is the msb 
- uint64_t mantissa = u.bits_d & 0xFFFFFFFFFFFFFULL;
- int32_t expo=(int)((u.bits_d>>52) & 0x7ff) ; 
- if(expo==0x7ff)
- 	{// nan or inf
- 	 if(mantissa) // nan
- 	 	{
- #ifdef _UCRT 	 	
-		   if(u.bits_d==0xFFF8000000000000ULL) // test against bits_d as this value is actually -ve
- 		 	{
- 		 	 *start="nan(ind)"; 
-  	 	 	 *decimal_pos = YA_S__SPECIAL;
-     	 	 *len = 8;
-     	 	}
-		  else if( (mantissa & ((uint64_t)1 << 51)) == 0)
- 		 	{
- 		 	 *start="nan(snan)"; 
-  	 	 	 *decimal_pos = YA_S__SPECIAL;
-     	 	 *len = 9;
-     	 	} 
- 	 	 else 
- 		 	{
- 		 	 *start="nan"; 
-  	 	 	 *decimal_pos = YA_S__SPECIAL;
-     	 	 *len = 3;
-     	 	}	 	 	 
- #else
-	 	 *start="nan"; 
- 	 	 *decimal_pos = YA_S__SPECIAL;
- 	 	 *len = 3;	
- #endif 
-#ifdef YA_SP_SIGNED_NANS
-         return ng;
-#else     	 
-     	 return false;// nan is always positive
-#endif   	 	 
- 	 	}
- 	 else 
-		{*start="inf"; 
-  	 	 *decimal_pos = YA_S__SPECIAL;
-     	 *len = 3;
-     	 return ng;
-		} 	 
- 	}	 	
- if(expo==0 && mantissa==0)
- 	{// zero is special as we cannot scale it into range : return 0 
-     *decimal_pos = 1;
-     *start = out;
-     out[0] = '0';
-     *len = 1;
-     return ng;
- 	}	
 
- expo-=1022; // remove exponet bias
- if(expo==-1022)
-	 	{// fix for denormalised numbers
- #if 1
- 		 expo+=12-__builtin_clzll(mantissa);// see https://gcc.gnu.org/onlinedocs/gcc/Bit-Operation-Builtins.html#index-_005f_005fbuiltin_005fclzll - this is normally much faster than the code below as the builtin is normally a single CPU instruction.	 
- #else	 	
-	 	 while((mantissa & ((uint64_t)1<<51)) == 0) { mantissa<<=1;expo--;}
- #endif
-	 	}
- if(ng)
-   	  {v= -v;
-   	  } 	
-#else /* portable pure C code - slightly slower than above */
-   int expo; // must be "int" as used with frexp()
-   const bool ng =signbit(v);
-	  
-   if(isnan(v))	 
-  		{
- #ifdef YA_SP_NAN_IND
- 		 if(ya_is_indefinite_double(v)) // use "double" function here as this is only used for double
- 		 	{
- 		 	 *start="nan(ind)"; 
-  	 	 	 *decimal_pos = YA_S__SPECIAL;
-     	 	 *len = 8;
-     	 	}
-     	 else if(ya_is_snan_double(v))
- 		 	{
- 		 	 *start="nan(snan)"; 
-  	 	 	 *decimal_pos = YA_S__SPECIAL;
-     	 	 *len = 9;
-     	 	}   
-		else  
- 		 	{
- 		 	 *start="nan"; 
-  	 	 	 *decimal_pos = YA_S__SPECIAL;
-     	 	 *len = 3;
-     	 	}			 
- #else  		
-		 *start="nan"; 
-  	 	 *decimal_pos = YA_S__SPECIAL;
-     	 *len = 3;
- #endif     	 
-#ifdef YA_SP_SIGNED_NANS
-         return ng;
-#else     	 
-     	 return false;// nan is always positive
-#endif     	 
-		}   	  
-	else if(isinf(v))
-		{*start="inf"; 
-  	 	 *decimal_pos = YA_S__SPECIAL;
-     	 *len = 3;
-     	 return ng;
-		}		
-  	else if(v==0.0 )
-  		{
-         *decimal_pos = 1;
-         *start = out;
-         out[0] = '0';
-         *len = 1;
-         return ng;
-      }
-   if(ng)
-   	  {v= -v;
-   	  }      
-    // v is a normal number, now get exponent
- 	frexp(v,&expo);// 0.5<=mant<1 
- #endif    
-
-    // find the decimal exponent as well as the decimal bits of the value
-    // log10 estimate 
-    tens = expo-1; 
-	tens=(tens < 0) ? (((tens * 78913) / 262144)-1) : (((tens * 78913) / 262144) ); //  78913/2^18=0.301029205322265625 (2^18= 262,144), log10(2)=0.30102999566398119521373889472449
-	 /* accuracy results from above:
-	  Accuracy check of power of 10's estimates:
-	       0 (0.0%) would need tens+=2
-	  3570882 (17.0%) would need tens+=1
-	  17469165 (83.0%) are exact
-	       0 (0.0%) would need tens-=1
-	       0 (0.0%) would need tens-=2
-	 */    
-
-	double xh,xl; 
- 	// want 1<=x<10  , note xl can be +/- but should always be very small compared to xh	  
-  #define ya_M_SHFT 60 /* power of 2 we shift mantissa, 2^64/10=1.84e18  so use 2^60 = 1.15e18 */	  
-	uint64_t m=0;// to avoid [Warning] 'm'/'d' may be used uninitialized errors below	
-	  /* new power of 10 reduction method - uses u2_64 for 1st step then swaps to u64 when power of 10 has been found */
-	expo=tens;// save a copy in case we need it for double-double digit extraction
-	dd_mult_power10( &xh,&xl,v,0.0,-tens );// this is correct ~ 80% of the time
-	u2_64 m_u2=d_to_u2_64(ldexp(xh,ya_M_SHFT )); // this should be exact
-	if(xl<0.0)
-	 	{
-	 	 m_u2= usub_u2_64(m_u2,d_to_u2_64(ldexp(-xl,ya_M_SHFT )+0.6)); //  ~ 0.5 needed to avoid "part 2" errors, 0.6 reduces errors @14 sf from 16 to 15 [ still one error at 13sf]
-	 	}
-	 else 
-	 	{ m_u2=uadd_u2_64(m_u2,d_to_u2_64(ldexp(xl, ya_M_SHFT )+0.5));/* +ve values are easy !  */	
-		} 
-	
-	 // extract 1st digit of mantissa - want it between 1 and 9
-	u2_64 d_u2=rshift_u2_64(m_u2,ya_M_SHFT);
-	d=d_u2.lo;// expecting 0-100 - using u2_64 as just a single uint64_t would overflow at 16 (= 2^64/2^60)
-	if(d>9 ) 
-	 	{
- #ifdef MONITOR_POWER10_ACCURACY	   	
-		 nos_10_wrong++;
- #endif		 
-		 tens++;// this 2nd step is needed ~ 20% of the time, need to divide by 10 which we can do with m_u2 directly [ using the remainder for rounding is necessary to pass part 2, without this you get  ]
-	 	 uint32_t rem=uremainder_u2_64_by_u32(m_u2,10); // remainder, for rounding 
-	 	 m_u2=udiv_u2_64_by_u32(m_u2,10); // divide by 10
-		 m=m_u2.lo;
-		 if(rem>=5) m++;// rounding 
-	 	 d=m>>ya_M_SHFT;
-		} 
-	else
-		{
- #ifdef MONITOR_POWER10_ACCURACY	   	
-		 nos_10_correct++;
- #endif		
-	 	 m=m_u2.lo; // fits in a single uint64_t already (<=9), d already set correctly
-		}
-  	bool roundup=false; 
-  	 // frac_digits = (frac_digits & 0x80000000) ? (frac_digits & 0x7ffffff) : (tens + frac_digits-1);
-  	 digits =(int32_t) ((frac_digits & 0x80000000) ? (int32_t)(frac_digits & 0x7ffffff) : (int32_t)(tens + (int32_t)frac_digits)); // digits is signed
-   	if(digits>18) digits=18; // 18 is a sensible limit (any other value gives more part 2 errors) - this must be limited - the "main code" will add extra zero's if the user asks for something "silly".	   	
-   	char *s=out;
-   	if(digits>=12 && digits<=15 ) /* digits==12 matches 13sf, 13 matches 14sf, so this is 13 to 16sf on test program  - note even for W32 the uint64_t method is faster than the double-double method */
-	 	{// for these values of digits the (fast) integer solution sometimes fails to give the correct rounding, so use a floating point solution for those	(which is slightly slower but more accurate)
-	 	 bool force0=false,force9=false;// used to deal with underflow and overflow as we are using floating point maths here which is not exact
-	 	 // need to repeat part of powers of 10 reduction:
-	 	 tens=expo;
-		 d=xh;
-		 if(d>9) 
-		 	{tens++;// this 2nd step is needed ~ 20% of the time
-		 	 double orig_xh=xh,orig_xl=xl; // just in case!
-			 div_dd_dd( &xh,&xl,xh,xl,10.0,0 );; //  /10 
-			 d=xh;
-			 if(d==0)
-			 	{tens--;// this is needed just a few times
-				 xh=orig_xh; xl=orig_xl;
-				 d=xh; // >9 is dealt with below
-				}
-			} 
-		 if(d>9)
-		 	{
-			 // assume this means 9.999999
-			 d=9;
-		 	}		 	 
-	 	 *s++=d+'0';// 1st significant digit 
-  		 /* "hybrid" - use integer maths whenever possible, while still keeping double-double accuracy */
-		 sub_dd_d(&xh,&xl,xh,xl,d); // x-=d - we have already extracted 1st digit
-		 for(int i=1;i<=digits;++i)
-		 	{if(!force0 && !force9)
-				{/* we extract 8 or 4 or 2 digits at a time if we need that many digits, otherwise we generate 1 at a time, each "block" (of 8/4/2/1) is processed as an integer for speed */	
-				 if(i+8<=digits) // digits is unsigned so cannot use digits-8
-				 	{// get 8 digits. d is an int32_t which can hold upto 2.1e9 so will easily hold 8 digits (9.9999e+7)
-				 	 mult_d_dd(&xh,&xl,100000000.0,xh,xl); // x*=100,000,000
-				 	 d=xh;
-				 	 sub_dd_d(&xh,&xl,xh,xl,d); 
-					 if(d<0) force0=true;
-					 if(d>99999999) force9=true;
-					 // now process force0/9 and d
-					 if(force0) {d=0;*s++='0';*s++='0';*s++='0';*s++='0';;*s++='0';*s++='0';*s++='0';*s++='0';}
-			 		 else if(force9) {d=9;*s++='9';*s++='9';*s++='9';*s++='9';*s++='9';*s++='9';*s++='9';*s++='9';}
-			 		 else { // create 8 digits	 		 
-			 		 		uint8_t d1=d/1000000;// 1st 2 digits of the 4 (can only be 0-99)
-			 		 		d%=1000000;
-					  	    *s++=d1/10+'0';// next significant digit 
-					  		*s++=d1%10+'0';// next significant digit 
-							d1=d/10000;	
-							d%=10000;
-					  	    *s++=d1/10+'0';// next significant digit 
-					  		*s++=d1%10+'0';// next significant digit 
-							d1=d/100;	
-					  	    *s++=d1/10+'0';// next significant digit 
-					  		*s++=d1%10+'0';// next significant digit					  					 		 
-			 		 		d1=d%100;// last 2 digits 
-					  	    *s++=d1/10+'0';// next significant digit 
-					  	    d1%=10; 
-					  		*s++=d1+'0';// next significant digit 
-							d=d1;// last digit needs to be in d in case needed for rounding						  	 	 
-				 	 	  }
-				 	 i+=7; // we have created an extra 7 digits (making 8 in total)
-					}
-				 else if(i+4<=digits) // digits is unsigned so cannot use digits-4
-				 	{// get 4 digits
-				 	 mult_d_dd(&xh,&xl,10000.0,xh,xl); // x*=10000
-				 	 d=xh;
-				 	 sub_dd_d(&xh,&xl,xh,xl,d); 
-					 if(d<0) force0=true;
-					 if(d>9999) force9=true;
-					 // now process force0/9 and d
-					 if(force0) {d=0;*s++='0';*s++='0';*s++='0';*s++='0';}
-			 		 else if(force9) {d=9;*s++='9';*s++='9';*s++='9';*s++='9';}
-			 		 else { uint8_t d1=d/100;// 1st 2 digits of the 4 (can only be 0-99)
-					  	    *s++=d1/10+'0';// next significant digit 
-					  		*s++=d1%10+'0';// next significant digit 	 		 
-			 		 		d1=d%100;// last 2 digits of the 4
-					  	    *s++=d1/10+'0';// next significant digit 
-					  	    d1%=10; 
-					  		*s++=d1+'0';// next significant digit 
-							d=d1;// last digit needs to be in d in case needed for rounding				 	 
-				 	 	  }
-				 	 i+=3; // we have created an extra 3 digits
-					}
-				 else if(i<digits)
-				 	{// get 2 digits
-				 	 mult_d_dd(&xh,&xl,100.0,xh,xl); // x*=100
-				 	 d=xh;// was xh+xl but with the double-doubles maths routines we known that xh+xl=xh
-				 	 sub_dd_d(&xh,&xl,xh,xl,d); 
-					 if(d<0) force0=true;
-					 if(d>99) force9=true;
-					 // now process force0/9 and d
-					 if(force0) {d=0;*s++='0';*s++='0';}
-			 		 else if(force9) {d=9;*s++='9';*s++='9';}
-			 		 else { uint8_t d1=d;
-					  	    *s++=d1/10+'0';// next significant digit 
-					  	    d1%=10; 
-					  		*s++=d1+'0';// next significant digit 
-							d=d1;// last digit needs to be in d in case needed for rounding				 	 
-				 	 	  }
-				 	 ++i; // we have created an extra digit
-					}
-				 else		 
-				 	{
-			 	 	 //get 1 digit
-				 	 mult_d_dd(&xh,&xl,10.0,xh,xl); // x*=10
-				 	 d=xh;// was xh+xl but with the double-doubles maths routines we known that xh+xl=xh
-				 	 sub_dd_d(&xh,&xl,xh,xl,d); // x-=d
-					 if(d<0) force0=true;
-					 if(d>9) force9=true;
-					 if(force0) {d=0;*s++='0';}
-			 		 else if(force9) {d=9;*s++='9';}
-			 		 else *s++=d+'0';// next significant digit 
-				 	}
-			 	}
-			 else
-			 	{// deal with force0/9 - d is already correctly set
-			 	 if(force0) *s++='0';
-				 else *s++='9'; // must be force9
-			 	}		 	
-			} 
-	 	  if(force9) roundup=true;
-		  else if(!force0) // force0 is effectively rounding up already
-		 	{
-			 //xh-=d; // no need for double-double on last (rounding) digit)	 
-			 if(xh>0.5) roundup=true; 
-			 if(xh==0.5 && d&1) roundup=true; // round to even
-		 	}					 	
-	 	}
-	 else
-	 	{// from here on all maths is done using integers, so is exact (we therefore guarantee each digit is 0..9 and don't need to check this) 
-		 *s++=d+'0';// 1st significant digit 
-		 for(int i=1;i<=digits;++i)
-		 	{m=(m-((uint64_t)d<<ya_M_SHFT))*10; 
-			 d=m>> ya_M_SHFT; 
-			 *s++=d+'0';// next significant digit 
-			 // cannot do break below as that messes up new rounding code
-			 // if(m==0) break; // no remainder - we don't need to generate lots of trailing zero's as the surrounding code will do that if necessary, lastd will =0 so rounding will work OK (it will not roundup).
-			}  
- #ifndef DBL_DECIMAL_DIG
-  #define DBL_DECIMAL_DIG __DBL_DECIMAL_DIG__	/* 17 */
- #endif				
-		 int lastd=d;// might need last digit for rounding to even decision 
-		 if(digits<0) lastd='0';// digit before needed
-		 else
-		 	{// now need to do rounding - create 1 more digit "d" for rounding
-			 m=(m-((uint64_t)d<<ya_M_SHFT))*10;
-			 d=m>> ya_M_SHFT; 
-			}
-		 if(d>5) roundup=true;
-		 else if(d==5 && digits+1 > DBL_DECIMAL_DIG) roundup=true; // resolution limit - without this we get 24 more part 2 errors
-		 else  // more complex rounding needed 	 
-		 	{ 
-			  if(d==5)
-			  	{
-			  	 // need to check that to a total of DBL_DECIMAL_DIG significant digits to get 0's (i.e. result is xxx50000000) 
-		 		 // We have already created 1 more digit (the "5")
-	 		 
-		 		 bool non_zero=false;
-				 for(int r=digits+1; r<=DBL_DECIMAL_DIG;++r)
-				 	{// create next digit
-				 	 m=(m-((uint64_t)d<<ya_M_SHFT))*10;
-		 			 d=m>> ya_M_SHFT;
-		 			 if(d>0)
-		 			 	{non_zero=true;
-		 			 	 break;
-		 			 	}
-		 			}
-		 		 if(!non_zero)
-				 	{// create next digit - this time its >=5 that we look for
-				 	 m=(m-((uint64_t)d<<ya_M_SHFT))*10;
-		 			 d=m>> ya_M_SHFT;
-		 			 if(d>=5)
-		 			 	{non_zero=true;
-		 			 	}
-		 			} 	
-				 if(non_zero || (lastd & 1) ) roundup=true; // > 5 or exactly 5 (to DBL_DECIMAL_DIG) , round to even    
-		 		}
-		 	 else if(d==4  ) // xxxx4999999 would round up to 500000	
-			  	{		
-				 bool non_nine=false;
-				 for(int r=digits+1; r<=DBL_DECIMAL_DIG;++r)
-				 	{// create next digit
-				 	 m=(m-((uint64_t)d<<ya_M_SHFT))*10;
-		 			 d=m>> ya_M_SHFT;
-		 			 if(d!=9)
-		 			 	{non_nine=true;
-		 			 	 break;
-		 			 	}
-		 			}
-		 		 if(!non_nine)
-				 	{// create next digit - this time its >=5 that we look for
-				 	 m=(m-((uint64_t)d<<ya_M_SHFT))*10;
-		 			 d=m>> ya_M_SHFT;
-		 			 if(d<5)
-		 			 	{non_nine=true;
-		 			 	}
-		 			} 	
-				 if(!non_nine && (lastd & 1) ) roundup=true; // exactly 5 (to DBL_DECIMAL_DIG) , round to even	
-				}			 
-		 	}
-		}   
-	if(digits<-1)
-		{*out='0';
-		}
-	else if(digits==-1)
-		{
-		 *out=roundup?'1':'0';// 0.5=>1 for %.0f
-		 tens++;		
-		}
-	else if(roundup)
-	 	{ // add 1 to lsd, propagate carries up as required (remembering to trap overflow)
-		 char *p=s;
-	 	 while(--p>=out)
-	 	 	{
-			 *p=*p+1; // add 1
-	 	 	 if(*p<='9') break;
-	 	 	 *p='0'; // 9->0 and a carry to next digit
-	 	 	}
-	 	 if(p<out && *out=='0')
-	 	 	{ // overflow 9.9999 => 10.0000 , just set 1st char as 1 (rest are already 0) and adjust exponent
-	 	 	 *out='1';
-	 	 	 tens++;
-	 	 	} 	
-	 	}    
-   *decimal_pos = tens+1;// based on .xxx not x.xxx
-   *start = out;
-   *len = s-out;
-   return ng;
-}
-#endif /* YA_SP_RYU */
 
 #if defined(YA_SP_SPRINTF_QF)  && defined(__SIZEOF_FLOAT128__) 
 /* float128 output - like ya_s__real_to_str() but for float128 */
@@ -3311,6 +2905,7 @@ static bool ya_s__real128_to_str(char const **start, uint32_t *len, char *out, i
 #endif	  
 	#define ya_M_SHFT 124 /* power of 2 we shift mantissa, 1^128/10=3.4e37  so use 2^124 = 2.13e37 */	  
 	u2_64 m={0,0};// to avoid compiler warning use use before setting.
+	const uint64_t M_MASK=((uint64_t)1<<(ya_M_SHFT-64))-1;// we are using fixed point 4.124 , anding with mask removes integer part of mantissa (is faster than x-=d) [ lower 64 bits of mask are all 1 and so do nothing ]
 	d=0;
 	for(int i=0;i<20;++i) // for loop avoids an infinite loop - but should always quickly terminate
 	 	{u2_64 ml;// signed as xl is also signed */
@@ -3330,7 +2925,7 @@ static bool ya_s__real128_to_str(char const **start, uint32_t *len, char *out, i
 		 else ml= flt128_to_u2_64(ldexpq(xl, ya_M_SHFT )+0.625Q); /* +ve values are easy ! Constant 0.6 to 0.65 gives 1 string difference at 34 sf in test program - Midpoint (0.625) used */	  
 		 m=uadd_u2_64(m,ml) ; // m+=ml;	
 		 
-		 d=rshift_u2_64(m,ya_M_SHFT).lo ;// d=m>> ya_M_SHFT;
+		 d=m.hi>>(ya_M_SHFT-64); // no point in shifting the other 64 bits and using m.lo
 	 	 if(d==0) tens--;
 	 	 else if(d>9) tens++;
 	 	 else 
@@ -3359,8 +2954,10 @@ static bool ya_s__real128_to_str(char const **start, uint32_t *len, char *out, i
 	 	{	
 		 *s++=d+'0';// 1st significant digit 
 		 for(int i=1;i<=digits;++i)
-		 	{m=umul_u2_64_by_ten(usub_u2_64(m,lshift_u2_64(u64_to_u2_64(0,d),ya_M_SHFT))) ;//m=(m-((unsigned __int128)d<<ya_M_SHFT))*10;	 
-			 d=rshift_u2_64(m,ya_M_SHFT).lo ;// d=m>> ya_M_SHFT;  
+		 	{	 
+			 m.hi&=M_MASK; // mask out d
+			 m=umul_u2_64_by_ten(m); //  and multiply by 10
+			 d=m.hi>>(ya_M_SHFT-64); // no point in shifting the other 64 bits and using m.lo  
 			 *s++=d+'0';// next significant digit 
 			 // uncommenting the line below makes the test program slower - presumably because m==0 is very unlikely
 			 //if((m.hi|m.lo)==0) break; // no remainder - we don't need to generate lots of trailing zero's as the surrounding code wil do that if necessary, lastd will =0 so rounding will work OK (it will not roundup).
@@ -3369,15 +2966,17 @@ static bool ya_s__real128_to_str(char const **start, uint32_t *len, char *out, i
 		 if(digits<0) lastd='0';// digit before needed
 		 else
 		 	{// now need to do rounding - create 1 more digit "d" for rounding
-			 m=umul_u2_64_by_ten(usub_u2_64(m,lshift_u2_64(u64_to_u2_64(0,d),ya_M_SHFT))) ;//m=(m-((unsigned __int128)d<<ya_M_SHFT))*10;
-			 d=rshift_u2_64(m,ya_M_SHFT).lo ;//d=m>> ya_M_SHFT; 
+			 m.hi&=M_MASK; // mask out d
+			 m=umul_u2_64_by_ten(m); //  and multiply by 10
+			 d=m.hi>>(ya_M_SHFT-64); // no point in shifting the other 64 bits and using m.lo 
 			}
 		 if(d>5) roundup=true;
 		 else
 		 	{ 
 			  if(d==5)
 			  	{
-				 m=umul_u2_64_by_ten(usub_u2_64(m,lshift_u2_64(u64_to_u2_64(0,d),ya_M_SHFT))) ;//m=(m-((unsigned __int128)d<<ya_M_SHFT))*10; // remainder
+				 m.hi&=M_MASK; // mask out d
+				 m=umul_u2_64_by_ten(m); //  and multiply by 10 to get remainder
 				 if((m.hi|m.lo)!=0) roundup=true; // >5
 			     else if(lastd & 1) roundup=true; // exactly 5, round to even	     
 		 		}
@@ -3422,7 +3021,11 @@ static bool ya_s__LD_to_str(char const **start, uint32_t *len, char *out, int32_
    int32_t tens,d,digits;
    int expo;
    v = value;
-   const bool ng=signbit(v);
+ #if defined(__has_builtin) && __has_builtin(__builtin_signbitl) /* work around winlibs gcc 15.2.0 bug in signbit() - is builtin for gcc and clang */
+   const bool ng=__builtin_signbitl(value);
+ #else
+ 	const bool ng=signbit((double)value);
+ #endif
    if(ng)
    	  v= -v;
    if(isnan(value))	 
@@ -3487,6 +3090,7 @@ static bool ya_s__LD_to_str(char const **start, uint32_t *len, char *out, int32_
 	#endif		   
 	#define ya_M_SHFT 124 /* power of 2 we shift mantissa, 1^128/10=3.4e37  so use 2^124 = 2.13e37 */	  
 	u2_64 m={0,0};// to avoid used before set compiler warnings
+	const uint64_t M_MASK=((uint64_t)1<<(ya_M_SHFT-64))-1;// we are using fixed point 4.124 , anding with mask removes integer part of mantissa (is faster than x-=d) [ lower 64 bits of mask are all 1 and so do nothing ]
 	d=0;
 	for(int i=0;i<20;++i) // for loop avoids an infinite loop - but should always quickly terminate
 	 	{u2_64 ml;// signed as xl is also signed */
@@ -3507,7 +3111,7 @@ static bool ya_s__LD_to_str(char const **start, uint32_t *len, char *out, int32_
 		 //my_printf(" digits=%d xh=%Lg xl=%Lg\n",digits,xh,xl);
 		 //printf("before exponent removal m= 0X%016"PRIx64"%016"PRIx64" ml=0X%016"PRIx64"%016"PRIx64"\n",m.hi,m.lo,ml.hi,ml.lo);
 		 m=uadd_u2_64(m,ml) ; // m+=ml;		 
-		 d=rshift_u2_64(m,ya_M_SHFT).lo ;// d=m>> ya_M_SHFT;
+		 d=m.hi>>(ya_M_SHFT-64); // no point in shifting the other 64 bits and using m.lo 
 	 	 if(d==0) tens--;
 	 	 else if(d>9) tens++;
 	 	 else 
@@ -3535,25 +3139,28 @@ static bool ya_s__LD_to_str(char const **start, uint32_t *len, char *out, int32_
 	 	{	
 		 *s++=d+'0';// 1st significant digit 
 		 for(int i=1;i<=digits;++i)
-		 	{m=umul_u2_64_by_ten(usub_u2_64(m,lshift_u2_64(u64_to_u2_64(0,d),ya_M_SHFT))) ;//m=(m-((unsigned __int128)d<<ya_M_SHFT))*10;	 
-			 d=rshift_u2_64(m,ya_M_SHFT).lo ;// d=m>> ya_M_SHFT;  
+		 	{m.hi&=M_MASK; // mask out d
+			 m=umul_u2_64_by_ten(m); //  and multiply by 10	 
+			 d=m.hi>>(ya_M_SHFT-64); // no point in shifting the other 64 bits and using m.lo  
 			 *s++=d+'0';// next significant digit 
 			 // commenting out the next line (m==0) makes the test program slower (this is the opposite of the double and f128 cases where commenting it out makes the test program faster).
-			 if((m.hi|m.lo)==0) break; // no remainder - we don't need to generate lots of trailing zero's as the surrounding code wil do that if necessary, lastd will =0 so rounding will work OK (it will not roundup).
+			 if((m.hi|m.lo)==0) break; // no remainder - we don't need to generate lots of trailing zero's as the surrounding code will do that if necessary, lastd will =0 so rounding will work OK (it will not roundup).
 			}  
 		 int lastd=d;// might need last digit for rounding to even decision 
 		 if(digits<0) lastd='0';// digit before needed
 		 else
 		 	{// now need to do rounding - create 1 more digit "d" for rounding
-			 m=umul_u2_64_by_ten(usub_u2_64(m,lshift_u2_64(u64_to_u2_64(0,d),ya_M_SHFT))) ;//m=(m-((unsigned __int128)d<<ya_M_SHFT))*10;
-			 d=rshift_u2_64(m,ya_M_SHFT).lo ;//d=m>> ya_M_SHFT; 
+			 m.hi&=M_MASK; // mask out d
+			 m=umul_u2_64_by_ten(m); //  and multiply by 10
+			 d=m.hi>>(ya_M_SHFT-64); // no point in shifting the other 64 bits and using m.lo 
 			}
 		 if(d>5) roundup=true;
 		 else
 		 	{ 
 			  if(d==5)
 			  	{
-				 m=umul_u2_64_by_ten(usub_u2_64(m,lshift_u2_64(u64_to_u2_64(0,d),ya_M_SHFT))) ;//m=(m-((unsigned __int128)d<<ya_M_SHFT))*10; // remainder
+				 m.hi&=M_MASK; // mask out d
+				 m=umul_u2_64_by_ten(m); //  and multiply by 10 to get remainder
 				 if((m.hi|m.lo)!=0) roundup=true; // >5
 			     else if(lastd & 1) roundup=true; // exactly 5, round to even	     
 		 		}
