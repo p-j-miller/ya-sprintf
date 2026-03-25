@@ -5,7 +5,11 @@ This started with the code from  stb_sprintf (v1.08) which is a public domain sn
 which itself was originally written by Jeff Roberts / RAD Game Tools, 2015/10/20.
 This version is dual licensed (MIT and Public Domain) - but note some of the required parts in other repositories and files in the ryu directory have different licences. 
 
-"ya-sprintf" stands for Yet Another sprintf.
+Release 2v1 adds no new functionality, but is faster than 2v0 (even 2v0 leveraging Ryu for double->string conversions). - see the "Timing" section below.
+Part of this speed increase is because double->string conversion now uses the fpfmt algorithm as described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof .
+
+"ya-sprintf" stands for Yet Another sprintf. Because of this the use of the Ryu algorithm is no longer recommended - and as such will give a warning at compile time if its selected (YA_SP_RYU).
+
 
 It now provides an almost full C23 printf family implementation including wide characters/strings.
 ya_sprintf also provides a number of extensions, the most significant is the ability to print 128 bit integers (__int128)
@@ -15,30 +19,42 @@ It also fixes all the bugs I'm aware of in the MinGW/TDM-GCC implementations, th
 In comparison to stb_sprintf (v1.08) it fixes all the bugs I found, implements the C23 formats and adds long doubles, 128 bit ints and 128 bit floats.
 Finally, it provides a consistent format string specification across different targets which aids portability between targets and compilers.
 
-This version optionally allows the Ryu algorithm to be used to print doubles. Ryu is believed to be the fastest algorithm for this function, but it does add ~ 100kB to the size of the resultant executable (and its licensing is a little different) so is a compile time option via a #define (see Options section below).
-
 Timing (all on the same PC with gcc 15.2.0 and Windows 11 25H2 with Intel i3-10100 CPU @ 3.6GHz ):
 ~~~
-For doubles via snprintf("%.*e") average time per test for precisions from 0 to 21 over a wide range of values
- On Windows 11 (using the Winlibs 15.2.0 gcc compiler - see below)
- W64 MSVCRT/mingw	:3395.3ns   baseline
- W64 UCRT/Winlibs  	: 445.9ns	7.6* faster
- W64 ya_sprintf		: 219.9ns	15.4* faster, *2 vs UCRT
- W64 ya_sprintf/ryu : 136.5ns	24.9* faster, *3.3 vs UCRT ( *1.6 vs standard ya_sprintf)
- 
- W32 MSVCRT/mingw	:3859.7ns   baseline
- W32 UCRT/Winlibs  	: 834.4ns	4.6* faster
- W32 ya_sprintf		: 262.6ns	14.7* faster, *3.2 vs UCRT
- W32 ya_sprintf/ryu : 215.4ns	17.9* faster, *3.9 vs UCRT ( *1.2 vs standard ya_sprintf)
+for doubles via snprintf("%.*e") using part 1 of this test program:
+Timing W64:	All under Windows 11 using Intel i3-10100					23/02/2026
+algorithm				part1 (secs)	part2 (secs)	part 1 delta (secs)	* speedup ref ucrt	* speedup ref base ya_sprintf	* speedup ref Ryu
+ya-dconvert				32.3486			108.466			6.0836				3.9					2.1								1.3
+Ryu						34.3185			109.934			8.0535				2.9					1.6								1.0
+standard ya_sprintf		38.8029			114.35			12.5379				1.9					1.0	
+standard sprintf(ucrt)	49.8741			125.268			23.6091				1.0		
+Null (timing baseline)	26.265			102.7			0			
+						
+						
+Timing W32:	All under Windows 11 using Intel i3-10100					
+algorithm				part1 (secs)	part2 (secs)	part 1 delta (secs)	* speedup ref ucrt	* speedup ref base ya_sprintf	* speedup ref Ryu
+ya-dconvert				55.4514			187.632			9.0108				5.1					3.2								1.5
+Ryu						59.8388			194.182			13.3982				3.5					2.2								1.0
+standard ya_sprintf		75.3432			208.611			28.9026				1.6					1.0	
+standard sprintf(ucrt)	92.6915			227.139			46.2509				1.0		
+Null (timing baseline)	46.4406			180.281			0			
 
- Timing with Ubuntu Linux ( Ubuntu 24.04.3 LTS (GNU/Linux 6.6.87.2-microsoft-standard-WSL2 x86_64)) using gcc 13.3.0 :
- X64 glibc 2.39		: 552.5ns	baseline
- X64 ya_sprintf		: 190.7ns	2.9* faster
- X64 ya_sprintf/ryu	: 142.3ns	3.9* faster (1.3* faster than standard ya_sprintf)
- 
- X32 glibc 2.39		: 723.6ns	baseline
- X32 ya_sprintf		: 315.2ns	2.3* faster
- X32 ya_sprintf/ryu	: 212.6ns	3.4* faster (1.5* faster than standard ya_sprintf) 
+Timing m64:	All under Linux using Intel i3-10100					23/02/2026
+algorithm				part1 (secs)	part2 (secs)	part 1 delta (secs)	* speedup ref sprintf	* speedup ref base ya_sprintf	* speedup ref Ryu
+ya-dconvert				37.9381			85.9848			7.046				4.4						1.5								1.3
+Ryu						40.3468			90.3686			9.4547				3.3						1.1								1.0
+standard ya_sprintf		41.4482			89.7552			10.5561				2.9						1.0	
+standard sprintf(ucrt)	61.9352			110.294			31.0431				1.0		
+Null (timing baseline)	30.8921			79.6092			0			
+						
+						
+Timing m32:	All under Linux using Intel i3-10100					
+algorithm				part1 (secs)	part2 (secs)	part 1 delta (secs)	* speedup ref sprintf	* speedup ref base ya_sprintf	* speedup ref Ryu
+ya-dconvert				53.3466			172.517			8.4241				4.6						1.8								1.4
+Ryu						57.0975			181.741			12.175				3.2						1.2								1.0
+standard ya_sprintf		59.9574			180.099			15.0349				2.6						1.0	
+standard sprintf(ucrt)	83.3688			203.831			38.4463				1.0		
+Null (timing baseline)	44.9225			164.968			0			
 ~~~
 
 It assumes a compiler that supports at least C99, it assumes chars are 8 bit ascii, int's are 32 bits, long can be 32/64 bits and long long int is 64 bits. Pointers can be 32 or 64 bits.
@@ -74,7 +90,7 @@ The overall "local" directory structure should look like:
 
 To compile the test program under Ubuntu Linux ( Ubuntu 24.04.3 LTS (GNU/Linux 6.6.87.2-microsoft-standard-WSL2 x86_64)), with the command executed from within the directory ya-sprintf:
 ~~~
-gcc -m64 -Wall -Ofast -fexcess-precision=standard -I. -D_FORTIFY_SOURCE=1 main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -lm -o test
+gcc -m64 -Wall -Ofast -fexcess-precision=standard -I. -D_FORTIFY_SOURCE=1 main.c ya-dconvert.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -lm -o test
 ~~~
 This should compile with no errors or warnings. The resultant file can be run with
 ~~~
@@ -87,7 +103,7 @@ Test program finished - a total of 60458998 tests executed
 ~~~
 To compile under Windows using the Winlibs compiler https://winlibs.com/  (again executed within the ya-sprintf directory):
 ~~~
-C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -Wall -m64 -fexcess-precision=standard -Ofast  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
+C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -Wall -m64 -fexcess-precision=standard -Ofast  -std=gnu99 -I. main.c ya-dconvert.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
 ~~~
 Again it should compile with no errors or warnings. This time the resultant file is run with:
 ~~~
@@ -400,10 +416,12 @@ Note YA_SP_SPRINTF_LD  is not used in this version - long doubles are always sup
 #define YA_SP_PTR_LEADINGZEROS // if defined always print pointers with leading zeros
 #define YA_SP_SPRINTF_EXP3 // min 3 digits in exponent (otherwise min of 2 digits in exponent) 
 #define YA_SP_WCHAR_PR_CHARS // if defined the precision for wide strings (%ls or %S) is in characters rather than bytes - C standard says bytes (which matches Linux), but Microsoft runtimes use characters
-#define YA_SP_RYU // if defined use RYU algorithm for doubles which is fast and accurate for IEEE format doubles - otherwise use more portable (but slower) algorithm [the same as used for long doubles and f128's] - note ryu adds about 100kb of tables to the executable.
+#define YA_SP_RYU // if defined use RYU algorithm for doubles - as stated above from 2v1 it is not recommended this is used (it will give a warning at compile time) as the alternative (using the fpfmt algorithm).
 
 ~~~
 # Algorithms to print floating point numbers
-By default (YA_SP_RYU not defined) ya_sprintf uses a new algorithm developed by the author based on a combination of the algorithm in Niklaus Wirth's book "Algorithms+Data Structures=Programs" (1976) pp 47-49, and Errol ("Printing Floating-Point Numbers, An Always Correct Method", Marc Andrysco, Ranjit Jhala & Sorin Lerner, 2016, https://dl.acm.org/doi/10.1145/2837614.2837654 ). It uses double-doubles for accuracy ( https://github.com/p-j-miller/double-double ) at least for extracting the decimal exponent, then it uses integers to convert the mantissa to decimal. It differs from Errol because that gives the smallest number of digits required to correctly represent a given number, but for printf the format specifies the number of significant digits to be displayed (which normally requires rounding the result). This algorithm is implemented in ya_s__DD_to_str(), ya_s__real128_to_str and ya_s__LD_to_str().
+To print long doubles and float_128's, ya_sprintf uses a new algorithm developed by the author based on a combination of the algorithm in Niklaus Wirth's book "Algorithms+Data Structures=Programs" (1976) pp 47-49, and Errol ("Printing Floating-Point Numbers, An Always Correct Method", Marc Andrysco, Ranjit Jhala & Sorin Lerner, 2016, https://dl.acm.org/doi/10.1145/2837614.2837654 ). It uses double-doubles for accuracy ( https://github.com/p-j-miller/double-double ) at least for extracting the decimal exponent, then it uses integers to convert the mantissa to decimal. It differs from Errol because that gives the smallest number of digits required to correctly represent a given number, but for printf the format specifies the number of significant digits to be displayed (which normally requires rounding the result). This algorithm is implemented in ya_s__real128_to_str and ya_s__LD_to_str(). Note that while the test program does not identify any errors, it is not guaranteed that this algorithm will always produce an exact result. If an exact result is essential the %a format is guaranteed to be exact.
 
-If Ryu selected then its only used for double conversions (i.e. in ya_s__DD_to_str()). Ryu is described in "Ryū revisited: printf floating point conversion", Ulf Adams, 2019, https://dl.acm.org/doi/10.1145/3360595 .
+For doubles the fpfmt algorithm is used. This is described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof. The code in ya_sprintf (in ya-dconvert.c and ya_s__DD_to_str() ) uses a new approach to "Omit Needless Multiplications" and uses u2_64 for 128 bit maths. For exponential formatted numbers this is currently believed to be the fastest algorithm (unfortunately this algorithm was published after ya-sprintf 2v0 was finished). While the algorithm has a proof, and the test program does not identify any errors, it is not possible to exhaustively check every possible value, so again if an exact result is essential the %a format is guaranteed to be exact.
+
+If Ryu is selected then its only used for double conversions (i.e. in ya_s__DD_to_str()). Ryu is described in "Ryū revisited: printf floating point conversion", Ulf Adams, 2019, https://dl.acm.org/doi/10.1145/3360595 . As noted above the fpfmt algorithm is faster and just as accurate so there is no need to continue to use the Ryu algorithm within ya-sprintf (and it may be removed in a future release).
