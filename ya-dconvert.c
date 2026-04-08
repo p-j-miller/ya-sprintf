@@ -97,6 +97,12 @@ static inline uint64_t umul128_hi64(uint64_t x, uint64_t y)
 #define DOUBLE_EXPONENT_OFFSET (DOUBLE_EXPONENT_BIAS+DOUBLE_MANTISSA_BITS)
 #define DOUBLE_IMPLICIT_BIT ((uint64_t)1<< DOUBLE_MANTISSA_BITS) 
 
+// characteristics of ieee format floats
+#define FLOAT_MANTISSA_BITS 23
+#define FLOAT_EXPONENT_BITS 8
+#define FLOAT_EXPONENT_BIAS 127
+#define FLOAT_EXPONENT_OFFSET (FLOAT_EXPONENT_BIAS+FLOAT_MANTISSA_BITS)
+#define FLOAT_IMPLICIT_BIT ((uint32_t)1<< FLOAT_MANTISSA_BITS) 
 
 // 128-bit significands of powers of 10 - normalised so the most significant bit is 1 and truncated at 128 bits . Covers -350 to +350 which is adequate for both double->string and string->double conversion
 #define dec_exp_min  (-350)
@@ -822,7 +828,36 @@ static inline u2_64 get_pow10_significand(int32_t dec_exp)
 static inline uint64_t uround(uint64_t u) 
 { return (u + 1 + ((u>>2)&1)) >> 2;
 }
+static inline uint32_t uround32(uint32_t u) 
+{ return (u + 1 + ((u>>2)&1)) >> 2;
+}
 
+// The algorithm for this is given in the "Unrounded Numbers" section of the fpfmt paper (pp 6), and implements "floor".
+// the input is a fixed point number with 2 bits after the decimal point, the 2nd of these bits is the "sticky bit" (the bit immediately after the decimal point represents "0.5").
+static inline uint64_t ufloor(uint64_t u) 
+{ return (u >> 2);
+}
+static inline uint32_t ufloor32(uint32_t u) 
+{ return (u >> 2);
+}
+
+// The algorithm for this is given in the "Unrounded Numbers" section of the fpfmt paper (pp 6), and implements "ceiling".
+// the input is a fixed point number with 2 bits after the decimal point, the 2nd of these bits is the "sticky bit" (the bit immediately after the decimal point represents "0.5").
+static inline uint64_t uceil(uint64_t u) 
+{ return ((u + 3) >> 2);
+}
+static inline uint32_t uceil32(uint32_t u) 
+{ return ((u + 3) >> 2);
+}
+
+// The algorithm for this is given in the "Unrounded Numbers" section of the fpfmt paper (pp 6), and implements "nudge".
+// the input is a fixed point number with 2 bits after the decimal point, the 2nd of these bits is the "sticky bit" (the bit immediately after the decimal point represents "0.5").
+static inline uint64_t unudge(uint64_t u,int delta) 
+{ return (u + delta);
+}
+static inline uint32_t unudge32(uint32_t u,int delta) 
+{ return (u + delta);
+}
 // note gcc uses a divide function for u64/u64 when compiled -m32, for u32/u32 it uses a multiply & shift. For -m64 it always uses a multiply & shift.
  static inline uint64_t div1e8(const uint64_t x) 
  {// equivalent to x/100,000,000 =1e8
@@ -865,6 +900,14 @@ static inline int32_t compute_dec_exp(int32_t bin_exp)
 static inline int32_t log2Pow10(int32_t x) 
 {
  return (x * 108853) >> 15;
+}
+
+// from fpfmt paper, page 14 - skewed function, converted to C.
+// computes  [log₁₀ 3/4 * 2**e] = [e*(log₁₀ 2)-(log₁₀ 4/3)].
+//  2620*631305 = 1.65e9, 2^31=2.14e9 so result does fit into an int32_t 
+static inline int32_t skewed(int32_t bin_exp) 
+{
+ return (bin_exp*631305 - 261663) >> 21;
 }
 
 // This structure is the C implementation of that show in the fpfmt paper "Fast, Accurate Scaling", pp 18
@@ -934,8 +977,6 @@ static inline Scalers prescale(int e, int p, int lp) {
 		 const uint64_t mid2 = ((unsigned __int128)x * c.pm.lo) >> 64;
 		 mid+=mid2;// mid, carry := bits.Add64(mid, mid2, 0)
 		 hi+=(mid<mid2); // hi += carry
-		 bool sticky=(mid != 0 || (hi&mask) != 0);	// hi may have changed
-		 return (hi>>c.s) | sticky;	
 		}
 	bool sticky=(mid != 0 || (hi&mask) != 0);	 
 	return (hi>>c.s) | sticky;
@@ -952,8 +993,6 @@ static inline Scalers prescale(int e, int p, int lp) {
 		 const uint64_t mid2=u2_64_mult_u64_u64(x, c.pm.lo).hi;// const uint64_t mid2 = ((unsigned __int128)x * c.pmLo) >> 64;
 		 mid+=mid2;// mid, carry := bits.Add64(mid, mid2, 0)
 		 hi+=(mid<mid2); // hi += carry
-		 bool sticky=(mid != 0 || (hi&mask) != 0);	// hi may have changed
-		 return (hi>>c.s) | sticky;	
 		}
 	bool sticky=(mid != 0 || (hi&mask) != 0);	 
 	return (hi>>c.s) | sticky;
@@ -988,6 +1027,37 @@ static inline Scalers prescale(int e, int p, int lp) {
  #endif //defined(__SIZEOF_INT128__)
 #endif
 
+#include <stdio.h> // only needed for debug
+#include <inttypes.h> /* to print uint64_t */
+
+// version of above  for the case where we have a 32 bit mantissa, This only uses upper 64 bits of entry from power of 10's table above (correctly rounded using lower 64 bits), and a single 32*64bit multiply
+ #if defined(__SIZEOF_INT128__) // code for 64 bit compiler - this uses a 64*64=>128 bit multiply (actually its 32*64=>96 bits) which is (just) faster than the two 32*32=>64bit multiplies used with the 32 bit compiler
+ static inline uint32_t uscale32(uint32_t x, Scalers c) 
+  { assert(c.s>=2 && c.s <32);	 
+	/* 32*64 bit multiply as per zmij */
+	uint64_t pm_hi=c.pm.hi;
+	if( c.pm.lo !=0) pm_hi++;// round up upper 64 bits of power10 value
+	unsigned __int128 fullx = (unsigned __int128)x * pm_hi;
+	uint64_t hi64=fullx>>32;// upper 64 bits of result
+	const uint64_t mask=(((uint64_t)1<<(c.s+32))-1);
+	bool sticky=(hi64 & mask)!=0 ;	
+	return (hi64>>(c.s+32)) | sticky;
+  } 
+#else // version avoiding 128 bit multiply - uses two 64 bit multiplies, so good for 32 bit compiler
+ static inline uint32_t uscale32(uint32_t x, Scalers c) 
+  { assert(c.s>=2 && c.s <32);	 
+	uint64_t pm_hi=c.pm.hi;
+	if( c.pm.lo !=0) pm_hi++;// round up upper 64 bits of power10 value
+	uint32_t pm_hi_h=pm_hi>>32;// upper 32 bits
+	uint32_t pm_hi_l=pm_hi;// lower 32 bits
+	uint64_t hi64=(uint64_t)x*pm_hi_h;
+	uint64_t mid64=(uint64_t)x*pm_hi_l;
+	hi64+=mid64>>32;
+	const uint64_t mask=(((uint64_t)1<<(c.s+32))-1);
+	bool sticky=(hi64 & mask)!=0 ;	
+	return (hi64>>(c.s+32)) | sticky;
+  }    
+ #endif //defined(__SIZEOF_INT128__)
  
 static const uint64_t u64powersOf10[]=
 				{
@@ -1030,36 +1100,211 @@ static inline void FixedWidth(uint64_t m,int e, int n, uint64_t *dp, int *pp)
  *pp = -p;
 }	
 
-/* convert mantissa (a uint64) to an ascii string with up to 18 digits 
-   This just creates a (maximum of 18) digits, it does NOT add a decimal point after the 1st digit (that is done in ya_sprintf or ya_dconvert_fixed() below ) 
-   Note this is NOT a general purpose uint64->ascii function, it only processes 18 digits whereas 2^64=18,446,744,073,709,551,616 which has 20 digits.
-   It uses a similar approach as in ya_sprint() for uint64's 
-   Does NOT terminate string with a \0 character 
-   Warning: this assumes nd is the actual number of decimal digits in d64, if this is not true the result will be wrong.
-   
-   This code uses a somewhat different algorithm to that described in the fpfmt paper "Printing Text" section on page 22, but it has the same result of converting d64 to an nd digit acsii string starting at *dst.
-   It has to convert 1 to 18 digits - which it does using the sequence:
-   	 convert first 10 digits if 10 or more digits required (i.e. if the number is >= 1,000,000,000 )
-    	after this the value will fit into 32 bits (2^32=4,294,967,296 , which is used for speed)
-   	 Then use a binary pattern for the remaining digits
-   	 convert next 8
-   	 convert next 4
-   	 convert next 2
-   	 convert final 1
-   	
-   While the focus is on conversion speed, this code is also slightly shorter (36 lines vs 38 lines) than the algorithm in the fpfmt paper.
-*/
-static inline void mantissa_to_string(char *dst, uint64_t d64, int nd)
+// returns the number of decimal digits in d 
+// fpfmt paper page 23
+static inline uint16_t Digits(uint64_t d)
 {
- if (d64>= 1000000000) 
-	{/* quickly convert 1st 10 digits */
-	 uint64_t d64_1e10=div1e10(d64); // d64/10000000000 implemented using a multiply & shift as gcc 15.2.0 does not do this automatically if compiled for a 32 bit target. This Has no speed impact for -m64 and saves 2ns for -m32	 
-	 uint64_t x = d64 - d64_1e10*10000000000;// x = d64 % 10000000000;
-	 d64=d64_1e10;// d64 /= 10000000000;	 
-	 nd-=10;
-	 ya_uitoa10(dst+nd,x);// (quickly) convert 10 digits to ascii	
+ int nd = compute_dec_exp(64-ya_clz(d));// log10Pow2(bits.Len64(d))
+ return nd + (d >= u64powersOf10[nd]);
+}
+static inline uint16_t Digits32(uint32_t d)
+{
+ int nd = compute_dec_exp(32-ya_clz32(d));
+ return nd + (d >= u64powersOf10[nd]);
+}
+
+// convert 64 mantissa to at most 17 digits, and typically 16 digits
+// This is fast for 17 and 16 digits but gets progressively slower as nd reduces (as it always converts at least 8 digits), if lower values of nd are likely mantissa64_to_string() below is faster.
+// uses SWAR BCD converter (as above)
+// always copies 16 or 17 digits to dst - there should always be this much room 
+// It does NOT terminate the resultant string with a \0
+static void inline mantissa64_to_stringBCD(char *dst, uint64_t d64, int nd)
+{assert(nd>=0 && nd<=17);
+ const uint64_t zeros = 0x0101010101010101u * '0';
+ // Each digit is denoted by a letter so value is abbccddeeffgghhii.
+ uint32_t abbccddee = (uint32_t)div1e8(d64);// 100,000,000 =1e8
+ uint32_t ffgghhii =(uint32_t)(d64-(uint64_t)abbccddee*100000000); // may be faster than abbccddee%100000000 - in most (but not all) cases the compiler will do this when given the % operator.
+ if(nd==17)
+ 	{*dst++=(abbccddee /   100000000)+'0';// creates MSDigit, abbccddee is uint32_t, so / & % should be efficient.
+ 	 abbccddee %= 100000000;
+ 	 nd=16;
+ 	}
+ u2_64 bcd128;// 16 BCD digits (needed to allow us to remove leading zero's based on nd below);
+ bcd128.hi = abbccddee==0?0:ya_to_BCD8(abbccddee);// have already removed "a" if it was present, might be zero for example if nd=8
+ bcd128.lo =  ffgghhii==0?0:ya_to_BCD8( ffgghhii);// check for zero - relatively unlikley but a simple check
+ // now remove leading zero's based on nd
+ bcd128=lshift_u2_64(bcd128,((16-nd)<<3));
+ bcd128.hi= is_big_endian() ? bcd128.hi | zeros: bswap64(bcd128.hi |zeros);// convert to ascii chars and if necessary swap order ready for memcpy to dst    
+ bcd128.lo= is_big_endian() ? bcd128.lo | zeros: bswap64(bcd128.lo |zeros);// convert to ascii chars and if necessary swap order ready for memcpy to dst 
+ memcpy(dst,&bcd128.hi,8);// always write 16/17 bytes
+ memcpy(dst+8,&bcd128.lo,8);
+}
+
+/* like above but returns nd adjusted to remove trailing zero's */
+static int inline mantissa64_to_stringBCD_notrailing0(char *dst, uint64_t d64, int nd)
+{assert(nd>0 && nd<=17);
+ const uint64_t zeros = 0x0101010101010101u * '0';
+ // Each digit is denoted by a letter so value is abbccddeeffgghhii.
+ uint32_t abbccddee = (uint32_t)div1e8(d64);// 100,000,000 =1e8
+ uint32_t ffgghhii =(uint32_t)(d64-(uint64_t)abbccddee*100000000); // may be faster than abbccddee%100000000 - in most (but not all) cases the compiler will do this when given the % operator.
+ if(nd==17)
+ 	{*dst++=(abbccddee /   100000000)+'0';// creates MSDigit, abbccddee is uint32_t, so / & % should be efficient.
+ 	 abbccddee %= 100000000;
+ 	 nd=16;
+ 	}
+ u2_64 bcd128;// 16 BCD digits (needed to allow us to remove leading zero's based on nd below);
+ bcd128.hi = abbccddee==0?0:ya_to_BCD8(abbccddee);// have already removed "a" if it was present, might be zero for example if nd=8
+ bcd128.lo =  ffgghhii==0?0:ya_to_BCD8( ffgghhii);// check for zero - relatively unlikley but a simple check
+ // look for trailing zero's by counting trailing zero bits [8 bits per character]
+ int tz=bcd128.lo==0?8+(ya_ctz64(bcd128.hi)>>3) :  ya_ctz64(bcd128.lo)>>3;
+ // now remove leading zero's based on nd
+ bcd128=lshift_u2_64(bcd128,((16-nd)<<3));
+ bcd128.hi= is_big_endian() ? bcd128.hi | zeros: bswap64(bcd128.hi |zeros);// convert to ascii chars and if necessary swap order ready for memcpy to dst    
+ memcpy(dst,&bcd128.hi,8);// always write 8 (or 9) bytes
+ if(bcd128.lo)
+ 	{// optionally write another 8 bytes if they are not zero (if they were zero will have been removed by trailing zero code)
+ 	 bcd128.lo= is_big_endian() ? bcd128.lo | zeros: bswap64(bcd128.lo |zeros);// convert to ascii chars and if necessary swap order ready for memcpy to dst 
+	 memcpy(dst+8,&bcd128.lo,8);
 	}
- uint32_t d32 = d64;// now we can swap to a uint32_t which is faster as %,/ get converted to * and shifts in both 32 and 64 bit compilers.  2^32 is 4,294,967,296 while we compare with 1e9=1,000,000,000 in the line above ensuring a u32 is OK.
+ return nd-tz;
+}
+
+
+// Short computes the shortest formatting of f,
+// using as few digits as possible that will still round trip
+// back to the original double.
+// from fpfmt paper page 15, algorithm converted to C by Peter Miller
+// This version takes a different approach to the fpfmt paper on trailing zero removal, rather than do this in a seperate function, its done as part of the double->ascii conversion
+// The logic for this change is that the trailing zero logic effectively looks at digits being zero which ~ the same effort as binary->decimal conversion (which stil has to be done), so merging them gives simpler, faster code.
+// Two binary->decimal convertors are used - one of 16/17 digits (where no trailing zero are present) and one that removes trailing zero's. There is only a small gain in this, but the code naturally splits into these two path's
+// Returns the number of digits (after trailing zero removal).
+static int Short_d(uint64_t ieeeMantissa,uint32_t ieeeExponent, char *dst, int32_t *p) 
+{
+ const int32_t minExp = -(DOUBLE_EXPONENT_BIAS+DOUBLE_EXPONENT_BITS+DOUBLE_MANTISSA_BITS-1);// -1085, e > this is "normal"
+ uint64_t m;// base 2 mantissa
+ int32_t e,pv;// pv will become *p (base 10 exponent), e is base 2 exponent
+ int32_t SieeeExponent;
+ if (ieeeExponent == 0) 
+ 	{// subnormals
+	 SieeeExponent = 1-(DOUBLE_EXPONENT_OFFSET);// exponent for subnormals is offset by 1
+	 int s = ya_clz(ieeeMantissa); // normalise so msb is 1, and adjust exponent to match
+	 ieeeMantissa <<= s;
+	 SieeeExponent -= s;
+	}  
+  else // normals
+ 	{ieeeMantissa= (ieeeMantissa | DOUBLE_IMPLICIT_BIT  )<<DOUBLE_EXPONENT_BITS;// put back "hidden bit" and shift so msbit is set
+ 	 SieeeExponent=(int32_t)ieeeExponent-(DOUBLE_EXPONENT_OFFSET+DOUBLE_EXPONENT_BITS);  // adjust exponent for bias and shift on line above
+	}
+ m=ieeeMantissa;
+ e=SieeeExponent;
+ uint64_t min,max,dmin,dmax,dv;// dv will become *d
+ int32_t z = DOUBLE_EXPONENT_BITS; // number of bits in exponent (as we normalised mantissa these are now "spare" at the ls end of the mantissa)
+ if(m == (uint64_t)1<<63 && e > minExp )
+ 	{// "normal" value
+ 	 pv = -skewed(e + z);
+	 min = m - ((uint64_t)1<<(z-2)); // min = m - 1/4 * 2**(e+z)
+	} 
+ else 
+ 	{
+	 if( e < minExp) 
+	 	{// "denormal"
+		 z = DOUBLE_EXPONENT_BITS + (minExp - e);
+		}	
+	 pv = -compute_dec_exp(e + z);   // -log10Pow2(e + z)
+	 min = m - ((uint64_t)1<<(z-1)); // min = m - 1/2 * 2**(e+z)
+	}
+ max = m + ((uint64_t)1<<(z-1)); // max = m + 1/2 * 2**(e+z)
+ int odd = (m>>z) & 1;
+ Scalers pre = prescale(e, pv, log2Pow10(pv));
+ dmin = uceil(unudge(uscale(min, pre),+odd));
+ dmax = ufloor(unudge(uscale(max, pre),-odd));
+ dv=div10(dmax); // dmax/10;
+ int dlen;
+ if ( dv*10>= dmin )
+ 	{
+	 dlen=Digits(dv);
+ 	 pv= -(pv - 1);
+ 	 int newlen=mantissa64_to_stringBCD_notrailing0(dst, dv, dlen);// convert to ascii and remove trailing zero's
+ 	 pv+=dlen-newlen; // adjust 10's exponent to compensate for trailing zero's removed
+ 	 *p=pv;
+	 return newlen; 
+	}
+ dv=dmin;
+ if ( dv < dmax )
+ 	{
+ 	 dv = uround(uscale(m, pre));
+	}
+ dlen=Digits(dv); 
+ mantissa64_to_stringBCD(dst, dv, dlen);
+ *p=-pv;
+ return dlen;// no trailing zeros
+}
+
+
+
+/* convert 32 bit unsigned integer to ascii with nd digits AND delete trailing zero's - returns new value for nd
+   nd must be >0 and <=8 if its larger than the actual number of digits then leading zero's will be created.
+    The upper limit of 8 comes from the fact that it's only called when a trailing zero gas already been found and removed so that takes us from 9 to 8 digits max.
+   It does NOT terminate the resultant string with a \0
+   This function uses an 8 digit BCD SWAR conversion, with embedded trailing zero removal
+   It always writes 8 characters as this is faster - this is not an issue as buffer should always be large enough for 8 characters.
+   Its slightly faster if mantissa32_to_string_notrailing0() is not marked "inline"
+*/
+
+static int mantissa32_to_string_notrailing0(char *dst, uint32_t d32, int nd)
+{assert(nd>0 && nd<=8);
+ // convert to 8 digit BCD using SWAR code 
+ const uint64_t zeros = 0x0101010101010101u * '0';
+ uint64_t a_b_c_d_e_f_g_h=ya_to_BCD8(d32);  
+ // finished conversion to BCD 
+ // look for trailing zero's by counting trailing zero bits [8 bits per character]
+ int tz=ya_ctz64(a_b_c_d_e_f_g_h)>>3; 
+ // now remove leading zero's based on nd
+ a_b_c_d_e_f_g_h <<=((8-nd)<<3);
+ a_b_c_d_e_f_g_h= is_big_endian() ? a_b_c_d_e_f_g_h |zeros : bswap64(a_b_c_d_e_f_g_h | zeros);// convert to ascii chars and if necessary swap order ready for memcpy to dst
+ memcpy(dst,&a_b_c_d_e_f_g_h,8); // could be 8 rather than nd-tz if that's faster 8=>32.2ns nd-tz=>32.5ns
+ // printf(" mantissa32_to_string_notrailing0(%u,%d) gives 0X%016"PRIx64" as a string this is \"%.8s\" return length=%d so return string is \"%.*s\"\n",d32,nd,a_b_c_d_e_f_g_h,dst,nd-tz,nd-tz,dst);
+ return nd-tz;
+}
+
+// convert 32 mantissa to at most 9 digits, and typically 8 digits
+// This is fast for 9 and 8 digits but gets progressively slower as nd reduces (as it always converts at least 8 digits), if lower values of nd are likely mantissa32_to_string() below is faster.
+// uses SWAR BCD converter (as above)
+// always copies 8 or 9 digits to dst - there should always be this much room 
+// It does NOT terminate the resultant string with a \0
+static void inline mantissa32_to_stringBCD(char *dst, uint32_t d32, int nd)
+{assert(nd>=0 && nd<=9);
+ if (nd>8) 
+	{/* must be 9 , convert 1 here */
+	 nd=8;// must be 8 left
+	 uint32_t d32_1e8=d32/100000000;
+	 d32 -=  d32_1e8*100000000;// x = d32 % 100000000;
+	 *dst++=d32_1e8+'0';
+	}
+ // now have 8 or less, always convert 8 using BCD SWAR
+ const uint64_t zeros = 0x0101010101010101u * '0';
+ uint64_t a_b_c_d_e_f_g_h = ya_to_BCD8(d32); 
+ // now remove leading zero's based on nd
+ a_b_c_d_e_f_g_h <<=((8-nd)<<3);
+ a_b_c_d_e_f_g_h= is_big_endian() ? a_b_c_d_e_f_g_h | zeros: bswap64(a_b_c_d_e_f_g_h |zeros);// convert to ascii chars and if necessary swap order ready for memcpy to dst    
+ memcpy(dst,&a_b_c_d_e_f_g_h,8);  // could just copy nd (adjusted for possible 9th digit) - but always doing 8 is faster on average
+}
+
+/* convert 32 bit unsigned integer to ascii with nd digits 
+   nd must be >=0 and <=10 if its larger than the actual number of digits then leading zero's will be created.
+   It is efficient for all values of nd, but if nd is almost always 8 or 9 then mantissa32_to_stringBCD() above is faster.
+   [ it can be called from mantissa64_to_string() with nd=0, but note it does not convert anything in this case ]
+   2^32=4,294,967,296 which has 10 digits
+   As all the maths is 32 bit the compiler will change / and % to multiplies and shifts (even when compiled for a 32 bit target)
+   It does NOT terminate the resultant string with a \0
+   This function uses a binary pattern when creating the digits:
+   	 convert  8
+   	 convert  4
+   	 convert  2
+   	 convert  1
+*/
+static void inline mantissa32_to_string(char *dst, uint32_t d32, int nd)
+{assert(nd>=0 && nd<=10);
  if (nd>=8) 
 	{/* use uitoa8 from ya-dconvert.h to quickly convert 8 digits  */
 	 uint32_t d32_1e8=d32/100000000;
@@ -1085,6 +1330,102 @@ static inline void mantissa_to_string(char *dst, uint64_t d64, int nd)
 	}	
  if (nd==1)  *dst = '0' + d32;// final digit 0-9 (msd) - its trivial to convert this.	
 }
+
+/* Short_f a version of Short_d that works on float's rather than doubles
+   Created by Peter Miller 31-3-2026 */
+// This version returns an that specifies the length of the returned string (string in dst).
+static int Short_f(uint32_t ieeeMantissa,uint32_t ieeeExponent, char *dst, int32_t *p) 
+{
+ const int32_t minExp = -(FLOAT_EXPONENT_BIAS+FLOAT_EXPONENT_BITS+FLOAT_MANTISSA_BITS-1);//  e > this is "normal"
+ uint32_t m;// base 2 mantissa
+ int32_t e,pv;// pv will become *p (base 10 exponent), e is base 2 exponent
+ int32_t SieeeExponent;
+ if (ieeeExponent == 0) 
+ 	{// subnormals
+	 SieeeExponent = 1-(FLOAT_EXPONENT_OFFSET);// exponent for subnormals is offset by 1
+	 int s = ya_clz32(ieeeMantissa); // normalise so msb is 1, and adjust exponent to match 
+	 ieeeMantissa <<= s;
+	 SieeeExponent -= s;
+	}  
+  else // normals
+ 	{ieeeMantissa= (ieeeMantissa | FLOAT_IMPLICIT_BIT  )<<FLOAT_EXPONENT_BITS;// put back "hidden bit" and shift so msbit is set
+ 	 SieeeExponent=(int32_t)ieeeExponent-(FLOAT_EXPONENT_OFFSET+FLOAT_EXPONENT_BITS);  // adjust exponent for bias and shift on line above
+	}
+ m=ieeeMantissa;
+ e=SieeeExponent;
+ uint32_t min,max,dmin,dmax,dv;// dv will become *d
+ int32_t z = FLOAT_EXPONENT_BITS; // number of bits in exponent (as we normalised mantissa these are now "spare" at the ls end of the mantissa)
+ if(m == (uint32_t)1<<31 && e > minExp )
+ 	{// "normal" value
+ 	 pv = -skewed(e + z);
+	 min = m - ((uint64_t)1<<(z-2)); // min = m - 1/4 * 2**(e+z)
+	} 
+ else 
+ 	{
+	 if( e < minExp) 
+	 	{// "denormal"
+		 z = FLOAT_EXPONENT_BITS + (minExp - e);
+		}	
+	 pv = -compute_dec_exp(e + z);   // -log10Pow2(e + z)
+	 min = m - ((uint32_t)1<<(z-1)); // min = m - 1/2 * 2**(e+z)
+	}
+ max = m + ((uint32_t)1<<(z-1)); // max = m + 1/2 * 2**(e+z)
+ int odd = (m>>z) & 1;
+ Scalers pre = prescale(e, pv, log2Pow10(pv));
+ dmin = uceil32(unudge32(uscale32(min, pre),+odd));
+ dmax = ufloor32(unudge32(uscale32(max, pre),-odd));
+ dv=dmax/10; // dmax/10;
+ int dlen;
+ if ( dv*10>= dmin )
+ 	{
+ 	 dlen=Digits32(dv);
+ 	 pv= -(pv - 1);
+ 	 int newlen=mantissa32_to_string_notrailing0(dst, dv, dlen);// convert to ascii and remove trailing zero's
+ 	 pv+=dlen-newlen; // adjust 10's exponent to compensate for trailing zero's removed
+ 	 *p=pv;
+	 return newlen; 
+	}
+ dv=dmin;
+ if ( dv  < dmax )
+ 	{
+ 	 dv = uround32(uscale32(m, pre));
+	}
+ dlen=Digits32(dv); 
+ mantissa32_to_stringBCD(dst, dv, dlen);	//  could also be mantissa32_to_string()
+ *p=-pv;
+ return dlen;// no trailing zeros
+}
+
+
+
+
+
+/* 	Convert a uint64_t to ascii with nd digits
+    nd must be >=1 and <=18 if its larger than the actual number of digits then leading zero's will be created.
+   	Extracts the 1st 10 digits then uses mantissa32_to_string() [ above] to convert the remaining digits
+	It does NOT terminate the resultant string with a \0
+	2^64=18,446,744,073,709,551,616 which has 20 digits 
+	The 1st step divides by 1,000,000,000 giving a max of  18,446,744,073 for mantissa32_to_string() which takes a 32 bit argument which can be at most 4,294,967,296 => meaning this is not a generic 64 bit conversion 
+	being limited to 4,294,967,295,000,000,000 which is just over 18 digits. 
+	In its use in ya-dconvert 18 digits is the maximum its called with so this is not an issue.
+	If this is ever a problem the initial "if" could be changed to a while()
+	It's slightly faster if this function is not marked "inline".
+*/
+static void mantissa64_to_string(char *dst, uint64_t d64, int nd) 
+{assert(nd>0 && nd<=18);
+ if (d64>= 1000000000) 
+	{/* quickly convert 1st 10 digits */
+	 uint64_t d64_1e10=div1e10(d64); // d64/10000000000 implemented using a multiply & shift as gcc 15.2.0 does not do this automatically if compiled for a 32 bit target. This Has no speed impact for -m64 and saves 2ns for -m32	 
+	 uint64_t x = d64 - d64_1e10*10000000000;// x = d64 % 10000000000;
+	 d64=d64_1e10;// d64 /= 10000000000;	 
+	 nd-=10;
+	 ya_uitoa10(dst+nd,x);// (quickly) convert 10 digits to ascii	
+	}
+ // now we can swap to a uint32_t which is faster as %,/ get converted to * and shifts in both 32 and 64 bit compilers.  2^32 is 4,294,967,296 while we compare with 1e9=1,000,000,000 in the line above ensuring a u32 is OK.
+ mantissa32_to_string(dst,(uint32_t)d64,nd); // note mantissa32_to_string() is marked "inline" so there is no over head in making this function call	
+}
+
+
 
 // #define DEBUG_DCONV
 
@@ -1126,7 +1467,7 @@ int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, 
 #ifdef DEBUG_DCONV
   printf(" after FixedWidth mant10=%llu exp10=%d\n",d,p);
 #endif   
- mantissa_to_string(buffer, d, n);// need to limit nos digits to <=18
+ mantissa64_to_string(buffer, d, n);// need to limit nos digits to <=18
  p += n - 1;// 1 digit before decimal point
  *decimal_pos=p;
  return n ;// nos digits created
@@ -1199,6 +1540,257 @@ void ya_dconvert_fixed(char *dst, double f, uint32_t prec)  /* prec is required 
  dst+=2;
  *dst=0; // terminate string
 }
+
+#define REAL_SHORTEST /* if defined print shortest string that round-loops correctly using fixed point or exponential format whichever is shorter. if not defined always print as x.xxe+/-EE but with as few as possible characters in the mantissa */
+	/* Note if  REAL_SHORTEST is defined it gives results similar to print's %g format, however the exponent will never have a plus sign and 1 digit exponents are used to save characters */
+	/* this define only effects ya_shortd() and ya_shortf() */
+	
+/* This function gives double->"shortest string"  */
+void ya_shortd(char *dst, double f) 
+{
+ union {
+	double real_d;
+	uint64_t bits_d;
+  } u = { f };
+	// Decode bits into sign, mantissa, and exponent.
+ const bool vsign = (u.bits_d  & ((uint64_t)1<<63)) != 0;// true if v is negative 1<<63 as sign bit is the msb 
+ uint64_t mantissa = u.bits_d & 0xFFFFFFFFFFFFFULL;
+ int expo=(int)((u.bits_d>>52) & 0x7ff) ; 
+ if(expo==0x7ff)
+	{// nan or inf
+	 if(vsign) *dst++='-';
+	 if(mantissa) // nan
+		{ if(u.bits_d==0xFFF8000000000000ULL)
+			strcpy(dst,"nan(ind)");
+		  else if( (mantissa & (1ull << 51)) == 0)
+			 strcpy(dst,"nan(snan)");
+		 else strcpy(dst,"nan");
+		}
+	 else strcpy(dst,"inf");
+	 return;
+	}	 	
+ if(expo==0 && mantissa==0)
+	{// zero is special as we cannot scale it into range : return 0
+	 //printf("v (%g) == zero!\n",v);
+	 if(vsign) *dst++='-';
+	 strcpy(dst,"0");
+	 return;
+	}	
+
+ if(vsign) 
+	{*dst++='-';
+	}	
+ // end of handling for nan etc	
+ int32_t tens;// base 10 exponent
+ int dlen=Short_d(mantissa,expo, dst+1, &tens);// short_d gives us a string containing the mantissa at dst+1
+
+ // have written mantissa, now deal with exponent
+ #ifdef REAL_SHORTEST
+  // This code does create the actual shortest length representation using either fixed point of exponential format - exponential format does not use a + sign for exponent and can print only 1 exponent digit if thats all that's required.
+ // At this point mantissa is at dst+1 and has dlen digits
+ // This is close to %g format, but omits the exponent sign if its positive and can use a single digit for the exponent it that's all that's required (true %g would print a plus sign for the exponent and print at least 2 digits for the exponent)
+ tens+=dlen-1;// only 1 digit before dp - gives us equivalent exponent for %e format
+ if((tens>-3 && tens<=0) || (tens>0 && tens<=dlen+1+(tens>9)) ) // for Short_f last item is tens<=dlen+1, but for double there may be a 2 digit exponent at this point so need extra +(tens>9) to reflect this
+ 	{// conditions above taken from C printf %g 
+ 	if(tens==0)
+ 		{// simple case x.xxx with no exponent
+		*dst=dst[1];// make space for decimal point
+ 		 dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
+ 		 dst+=dlen+(dlen>1);// need dp if more than 1 digit 
+	 	 *dst=0; return;
+	 	}
+	 else if(tens>0)
+	 	{ // don't need exponent, but need to put dp in correct place - will create something like "10.12"
+	 	 int minl=tens+1>dlen?dlen:tens+1;
+	 	 memmove(dst,dst+1,minl); // memmove allows overlapping areas
+	 	 dst[minl]='.';
+	 	 if(dlen<=tens) 
+		  	{memset(dst+minl,'0',tens+1-dlen);// 1e1 =>10 so needs extra zero's adding
+		  	 dst+=tens+1;// was tens+1
+		  	}
+		 else dst+=dlen+(dlen>1+tens);// need dp if a digit after dp
+	 	 *dst=0; return;
+	 	}
+	 // tens < 0, again don't need exponent but need leading zero's before dp.
+	 memmove(dst+(-tens)+1,dst+1,dlen);// move right 
+	 *dst='0';
+	 dst[1]='.';
+	 memset(dst+2,'0',-tens-1);
+	 dst+=dlen+(-tens)+1; // +1 for dp
+	 *dst=0;
+	 return;
+	}
+ // print as %e format x.xxxEee	
+ *dst=dst[1];// make space for decimal point
+ dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
+ dst+=dlen+(dlen>1);// need dp if more than 1 digit 
+ *dst++='e';
+ if(tens<0)
+ 	{*dst++='-';
+ 	 tens= -tens;
+ 	}
+ // don't print "+" for exponent
+ // now need to print 1,2 or 3 digits for exponent (max +308, min -324 )
+ if(tens>=100) 
+ 	{// 3 digit exponent
+	 *dst='0'+tens/100;// 3rd digit
+  	 ya_uitoa2(dst+1,tens%100);// other 2 digits of exponent
+	 dst[3]=0; // terminate o/p string	 
+ 	} 
+ else if(tens<10)
+ 	{// only 1 digit exponent 
+ 	 *dst='0'+tens;
+ 	 dst[1]=0;// terminate o/p string
+ 	}
+ else
+ 	{// 2 digit exponent
+  	 ya_uitoa2(dst,tens);// other 2 digits of exponent
+	 dst[2]=0;// terminate o/p string
+	}
+ return;	
+}  		
+ #else 
+ *dst=dst[1];// make space for decimal point
+ dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
+ dst+=dlen+(dlen>1);// need dp if more than 1 digit
+ // 1st output sign of exponent (+/-) - I tried the "branchless" approach from zmij and it was slightly slower when used here
+ *dst++='e';
+ tens+=dlen-1;// only 1 digit before dp
+ if(tens<0)
+ 	{*dst++='-';
+ 	 tens= -tens;
+ 	}
+ else *dst++='+';
+ // now print exp - this is the fastest of many methods I tried
+ // 3 digits of exponent for double - max exponent is +308, min -324 - always print at least 2 digits 
+ if(tens>=100) 
+ 	{// 3 digit exponent
+	 *dst='0'+tens/100;// 3rd digit
+  	 ya_uitoa2(dst+1,tens%100);// other 2 digits of exponent
+	 dst[3]=0; // terminate o/p string	 
+ 	} 
+ else
+ 	{// 2 digit exponent
+  	 ya_uitoa2(dst,tens);//  2 digits of exponent
+	 dst[2]=0;// terminate o/p string
+	}
+} 
+#endif 	
+
+
+/* This function gives float->"shortest string" */
+void ya_shortf(char *dst, float f) 
+{
+ union {
+	float real_d;
+	uint32_t bits_d;
+  } u = { f };
+	// Decode bits into sign, mantissa, and exponent.
+ const bool vsign = (u.bits_d  & ((uint32_t)1<<31)) != 0;// true if v is negative 1<<31 as sign bit is the msb 
+ uint32_t ieeeMantissa = u.bits_d & 0x007FFFFF;
+ int ieeeExponent=(int)((u.bits_d>>23) & 0xff) ; 
+ if(ieeeExponent==0xff)
+	{// nan or inf
+	 if(vsign) *dst++='-';
+	 if(ieeeMantissa) // nan
+		{ if(u.bits_d==0xFFC00000)
+			strcpy(dst,"nan(ind)");
+		  else if( (ieeeMantissa & (1ull << 22)) == 0)
+			 strcpy(dst,"nan(snan)");
+		 else strcpy(dst,"nan");
+		}
+	 else strcpy(dst,"inf");
+	 return;
+	}	 	
+ if(ieeeExponent==0 && ieeeMantissa==0)
+	{// zero is special as we cannot scale it into range : return 0
+	 //printf("v (%g) == zero!\n",v);
+	 if(vsign) *dst++='-';
+	 strcpy(dst,"0");
+	 return;
+	}	
+ if(vsign) 
+	{*dst++='-';
+	}	
+ // end of handling for nan etc	
+ int32_t tens;// base 10 exponent
+ int dlen=Short_f(ieeeMantissa,ieeeExponent, dst+1, &tens);// short_f gives us a string containing the mantissa at dst+1
+
+ // have written mantissa, now deal with exponent
+ #ifdef REAL_SHORTEST
+ // This code does create the actual shortest length representation using either fixed point of exponential format - exponential format does not use a + sign for exponent and can print only 1 exponent digit if thats all that's required.
+ // At this point mantissa is at dst+1 and has dlen digits
+ tens+=dlen-1;// only 1 digit before dp - gives us equivalent exponent for %e format
+ if((tens>-3 && tens<=0) || (tens>0 && tens<=dlen+1) ) 
+ 	{// conditions above taken from C printf %g 
+ 	if(tens==0)
+ 		{// simple case x.xxx with no exponent
+		*dst=dst[1];// make space for decimal point
+ 		 dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
+ 		 dst+=dlen+(dlen>1);// need dp if more than 1 digit 
+	 	 *dst=0; return;
+	 	}
+	 else if(tens>0)
+	 	{ // don't need exponent, but need to put dp in correct place - will create something like "10.12"
+	 	 int minl=tens+1>dlen?dlen:tens+1;
+	 	 memmove(dst,dst+1,minl); // memmove allows overlapping areas
+	 	 dst[minl]='.';
+	 	 if(dlen<=tens) 
+		  	{memset(dst+minl,'0',tens+1-dlen);// 1e1 =>10 so needs extra zero's adding
+		  	 dst+=tens+1;// was tens+1
+		  	}
+		 else dst+=dlen+(dlen>1+tens);// need dp if a digit after dp
+	 	 *dst=0; return;
+	 	}
+	 // tens < 0, again don't need exponent but need leading zero's before dp.
+	 memmove(dst+(-tens)+1,dst+1,dlen);// move right 
+	 *dst='0';
+	 dst[1]='.';
+	 memset(dst+2,'0',-tens-1);
+	 dst+=dlen+(-tens)+1; // +1 for dp
+	 *dst=0;
+	 return;
+	}
+ // print as %e format x.xxxEee	
+ *dst=dst[1];// make space for decimal point
+ dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
+ dst+=dlen+(dlen>1);// need dp if more than 1 digit 
+ *dst++='e';
+ if(tens<0)
+ 	{*dst++='-';
+ 	 tens= -tens;
+ 	}
+ // don't print "+" for exponent
+ if(tens<10)
+ 	{// only 1 digit exponent 
+ 	 *dst='0'+tens;
+ 	 dst[1]=0;// terminate string	
+ 	}
+ else
+ 	{// 2 digit exponent
+  	 ya_uitoa2(dst,tens);// other 2 digits of exponent
+	 dst[2]=0;// terminate string	
+	}
+}  	
+ #else
+ *dst=dst[1];// make space for decimal point
+ dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
+ dst+=dlen+(dlen>1);// need dp if more than 1 digit 
+ // 1st output sign of exponent (+/-) - I tried the "branchless" approach from zmij and it was slightly slower when used here
+ *dst++='e';
+ tens+=dlen-1;// only 1 digit before dp
+ if(tens<0)
+ 	{*dst++='-';
+ 	 tens= -tens;
+ 	}
+ else *dst++='+';
+ // now print exp - this is the fastest of many methods I tried
+ // 2 digit exponent for floats (e-45 to E+38) - always print  2 digits 
+ ya_uitoa2(dst,tens);
+ dst[2]=0; // terminate string
+} 	
+#endif 
+
 
 
 /* function below created by Peter Miller 25-2-2026 to interface with fast_strtod() in atof.c 
