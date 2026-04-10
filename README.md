@@ -6,9 +6,47 @@ which itself was originally written by Jeff Roberts / RAD Game Tools, 2015/10/20
 This version is dual licensed (MIT and Public Domain) - but note some of the required parts in other repositories and files in the ryu directory have different licences. 
 
 Release 2v1 adds no new functionality, but is faster than 2v0 (even 2v0 leveraging Ryu for double->string conversions). - see the "Timing" section below.
-Part of this speed increase is because double->string conversion now uses the fpfmt algorithm as described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof .
+Part of this speed increase is because double->string conversion now uses the fpfmt algorithm as described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof . Because of this the use of the Ryu algorithm is no longer recommended - and as such will give a warning at compile time if its selected (YA_SP_RYU).
 
-"ya-sprintf" stands for Yet Another sprintf. Because of this the use of the Ryu algorithm is no longer recommended - and as such will give a warning at compile time if its selected (YA_SP_RYU).
+Release 2v2 adds 3 functions that directly convert a double or float to a string of characters - these are in ya-dconvert.h and all use variants of the fpfmt algorithm:
+~~~
+void ya_dconvert_fixed(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*f",prec,f) */
+void ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
+void ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
+~~~
+ya_dconvert_fixed() provides a (faster) alternative to an existing sprintf capability (by avoiding the runtime overhead of decoding the format string), while ya_shortd() and in particular ya_shortf() provide new functionality as the resultant string can be converted back to a float/double (via fast_strtod() or fast_strtof()) to give the initial value (the closest existing capability is sprintf(dst,"%.*g",DBL_DECIMAL_DIG,f) ).   A few examples of the "short" functions:
+~~~
+ float fin;
+ char buf_f[31],buf_d[31];// doubles will need at most sign(1)+DBL_DECIMAL_DIG(17)+decimal point(1)+"e"(1)+exponent sign(1)+exponent(3) + null(1) = 25 characters,
+						  // for floats FLT_DECIMAL_DIG=9 and a maximum of 2 exponent digits gives 16 characters.
+ ya_shortf(buf_f,fin);
+ ya_shortd(buf_d,fin);
+ printf("fin=%.17g buf_f=%s buf_d=%s\n",fin,buf_f,buf_d);// 17 is DBL_DECIMAL_DIG
+Gives for some example values:
+  fin=0: buf_f=0 buf_d=0
+  fin=1.4012984643248171e-45: buf_f=1e-45 buf_d=1.401298464324817e-45
+  fin=1.1754943508222875e-38: buf_f=1.1754944e-38 buf_d=1.1754943508222875e-38
+  fin=135.375: buf_f=135.375 buf_d=135.375
+  fin=0.010052000172436237: buf_f=0.010052 buf_d=0.010052000172436237
+  fin=0.10000000149011612: buf_f=0.1 buf_d=0.10000000149011612
+  fin=0.20000000298023224: buf_f=0.2 buf_d=0.20000000298023224
+  fin=9: buf_f=9 buf_d=9
+  fin=9.5: buf_f=9.5 buf_d=9.5
+  fin=9.25: buf_f=9.25 buf_d=9.25
+  fin=9.125: buf_f=9.125 buf_d=9.125
+  fin=10: buf_f=10 buf_d=10
+  fin=1234567936: buf_f=1.234568e9 buf_d=1234567936
+~~~
+Note that the values printed by ya_shortf() and ya_shortd() in the above examples are sometimes different as doubles have a much higher resolution and range than floats. Also note that the "short" functions print values as compactly as possible (e.g. the last example uses "e9" rather than "e+09" as used by sprintf("%f") which is two characters longer).
+
+Versions 2.2 also uses "#pragma message" to tell the user at compile time if specific builtin functions are being used (these are all in ya_dconvert.h) - for example gcc 15.2.0 gives:
+~~~
+D:\dev-cpp-files\ya-sprintf\ya-dconvert.h	In function 'ya_clz32':
+270	19	D:\dev-cpp-files\ya-sprintf\ya-dconvert.h	[Note] '#pragma message: ya_clz32() using __builtin_clz(x)'
+~~~
+These messages do not count as compiler errors or warnings, but do provide useful feedback. If an unexpected function is selected (in particular if a "C version" is reported but a builtin is available), please inform the author.
+
+"ya-sprintf" stands for Yet Another sprintf. 
 
 
 It now provides an almost full C23 printf family implementation including wide characters/strings.
@@ -380,6 +418,11 @@ The next 2 functions write to stdout:
 
  void ya_s_set_separators( char comma, char period )
   Set the comma and period (decimal point) characters to use.
+
+Additionally, the following 3 functions are defined in ya-dconvert.h:
+  void ya_dconvert_fixed(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*f",prec,f) */
+  void ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
+  void ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
 ~~~
 # Options
 ya_sprintf is very configurable at compile time via #define statements, mainly to allow it to exactly emulate the output from a particular compiler (this is how the test program works).
