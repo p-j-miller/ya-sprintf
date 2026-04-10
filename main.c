@@ -2,7 +2,7 @@
 
    Written by Peter Miller 2/2020
    This version 2/26 - latest changes were to support dconvert derived double conversion in ya_sprintf.
-   					 - this still generates correct numbers, but especialy for denormals generates different results to the other double converters which required some changes to this test suite to avoid "false failures".
+   					 - this still generates correct numbers, but especially for denormals generates different results to the other double converters which required some changes to this test suite to avoid "false failures".
  
  This version adds tests for %w32/64/128 - which is a C23 addition.
  %b/%B another C23 addition was already covered by these tests.  
@@ -99,7 +99,7 @@ ya-dconvert				32.3486			108.466			6.0836				3.9					2.1								1.3
 Ryu						34.3185			109.934			8.0535				2.9					1.6								1.0
 standard ya_sprintf		38.8029			114.35			12.5379				1.9					1.0	
 standard sprintf(ucrt)	49.8741			125.268			23.6091				1.0		
-Null (timing basline)	26.265			102.7			0			
+Null (timing baseline)	26.265			102.7			0			
 						
 						
 Timing W32:	All under Windows 11 using Intel i3-10100					
@@ -108,7 +108,7 @@ ya-dconvert				55.4514			187.632			9.0108				5.1					3.2								1.5
 Ryu						59.8388			194.182			13.3982				3.5					2.2								1.0
 standard ya_sprintf		75.3432			208.611			28.9026				1.6					1.0	
 standard sprintf(ucrt)	92.6915			227.139			46.2509				1.0		
-Null (timing basline)	46.4406			180.281			0			
+Null (timing baseline)	46.4406			180.281			0			
 
 Timing m64:	All under Linux using Intel i3-10100					23/02/2026
 algorithm				part1 (secs)	part2 (secs)	part 1 delta (secs)	* speedup ref sprintf	* speedup ref base ya_sprintf	* speedup ref Ryu
@@ -116,7 +116,7 @@ ya-dconvert				37.9381			85.9848			7.046				4.4						1.5								1.3
 Ryu						40.3468			90.3686			9.4547				3.3						1.1								1.0
 standard ya_sprintf		41.4482			89.7552			10.5561				2.9						1.0	
 standard sprintf(ucrt)	61.9352			110.294			31.0431				1.0		
-Null (timing basline)	30.8921			79.6092			0			
+Null (timing baseline)	30.8921			79.6092			0			
 						
 						
 Timing m32:	All under Linux using Intel i3-10100					
@@ -125,7 +125,7 @@ ya-dconvert				53.3466			172.517			8.4241				4.6						1.8								1.4
 Ryu						57.0975			181.741			12.175				3.2						1.2								1.0
 standard ya_sprintf		59.9574			180.099			15.0349				2.6						1.0	
 standard sprintf(ucrt)	83.3688			203.831			38.4463				1.0		
-Null (timing basline)	44.9225			164.968			0			
+Null (timing baseline)	44.9225			164.968			0			
 	
 */
 #define PART1_SPRINTF_TESTS /* if defined do detailed testing of double conversions (including "round loop" (converting double->string->double)  - these tests take ~ 2 minutes */
@@ -2453,6 +2453,9 @@ printf("__builtin_bswap64() is available\n");
 #endif 
 #if defined(__has_builtin) && __has_builtin(__builtin_clzll) /*  is builtin for gcc and clang */
 printf("__builtin_clzll is available\n");
+#endif
+#if defined(__has_builtin) && __has_builtin(__builtin_clz) /*  is builtin for gcc and clang */
+printf("__builtin_clz is available\n");
 #endif
 #ifdef  YA_SP_LINUX_STYLE /* tell ya_printf() to print to match Linux gcc libc */
  printf("YA_SP_LINUX_STYLE is defined\n");
