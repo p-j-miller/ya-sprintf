@@ -8,13 +8,15 @@ This version is dual licensed (MIT and Public Domain) - but note some of the req
 Release 2v1 adds no new functionality, but is faster than 2v0 (even 2v0 leveraging Ryu for double->string conversions). - see the "Timing" section below.
 Part of this speed increase is because double->string conversion now uses the fpfmt algorithm as described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof . Because of this the use of the Ryu algorithm is no longer recommended - and as such will give a warning at compile time if its selected (YA_SP_RYU).
 
-Release 2v2 adds 3 functions that directly convert a double or float to a string of characters - these are in ya-dconvert.h and all use variants of the fpfmt algorithm:
+Release 2v3 adds 1 more functions that directly converts a double or float to a string of characters (making 4 in total as 2v2 provided 3) - these are declared in ya-dconvert.h and all use variants of the fpfmt algorithm.
+2v3 also renames ya_dconvert_fixed() to ya_dconvert_efmt() as well as adding ya_dconvert_gfmt(). Finally 2v3 changes the return types of these functions to char *, the pointer they return points to the final '\0' in the string stored at dst. This can always be ignored, but this pointer allows another string to be easily added on immediately after the converted number, or the length calculated more efficiently than using strcat() or strlen().
 ~~~
-void ya_dconvert_fixed(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*f",prec,f) */
-void ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
-void ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
+char *ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*e",prec,f). dst must have space for at least 9+prec characters*/
+char *ya_dconvert_gfmt(char *dst, double f, uint32_t prec) ; /* prec is required total number of mantissa digits - emulates sprintf(dst,"%.*g",prec,f). dst must have space for at least 8+prec characters */
+char *ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
+char *ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
 ~~~
-ya_dconvert_fixed() provides a (faster) alternative to an existing sprintf capability (by avoiding the runtime overhead of decoding the format string), while ya_shortd() and in particular ya_shortf() provide new functionality as the resultant string can be converted back to a float/double (via fast_strtod() or fast_strtof()) to give the initial value (the closest existing capability is sprintf(dst,"%.*g",DBL_DECIMAL_DIG,f) ).   A few examples of the "short" functions:
+ya_dconvert_efmt() & ya_dconvert_gfmt() provide a (faster) alternative to an existing sprintf capability (by avoiding the runtime overhead of decoding the format string), while ya_shortd() and in particular ya_shortf() provide new functionality as the resultant string can be converted back to a float/double (via fast_strtod() or fast_strtof()) to give the initial value (the closest existing capability is sprintf(dst,"%.*g",DBL_DECIMAL_DIG,f) ).   A few examples of the "short" functions:
 ~~~
  float fin;
  char buf_f[31],buf_d[31];// doubles will need at most sign(1)+DBL_DECIMAL_DIG(17)+decimal point(1)+"e"(1)+exponent sign(1)+exponent(3) + null(1) = 25 characters,
@@ -252,8 +254,8 @@ The flag characters and their meanings are:
  $  For integers and floats, you can use a "$" specifier and the number
 	will be converted to float and then divided to get kilo, mega, giga or
 	tera , etc and then printed, so "%$d" 1000 is "1.0 k", "%$.2d" 2536000 is "2.53 M", etc.
-	For byte values (where k is 1024 rather than 1000) , use two $:s, like "%$$d" to turn 2536000 to "2.42 Mi".
-	If you prefer JEDEC suffixes to SI ones, use three $:s: "%$$$d" -> "2.42 M".
+	For byte values (where k is 1024 rather than 1000) , use two $'s, like "%$$d" to turn 2536000 to "2.42 Mi".
+	If you prefer JEDEC suffixes to SI ones, use three $'s "%$$$d" -> "2.42 M".
 	To remove the space between the number and the suffix, add "_" specifier: "%_$d" -> "2.53M".
 	The complete list of suffixes is KMGTPEZY.
 	Note that numbers < 1000 will have no suffix added.
@@ -419,10 +421,11 @@ The next 2 functions write to stdout:
  void ya_s_set_separators( char comma, char period )
   Set the comma and period (decimal point) characters to use.
 
-Additionally, the following 3 functions are defined in ya-dconvert.h:
-  void ya_dconvert_fixed(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*f",prec,f) */
-  void ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
-  void ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
+Additionally, the following 4 functions are defined in ya-dconvert.h:
+ char *ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*e",prec,f). dst must have space for at least 9+prec characters*/
+ char *ya_dconvert_gfmt(char *dst, double f, uint32_t prec) ; /* prec is required total number of mantissa digits - emulates sprintf(dst,"%.*g",prec,f). dst must have space for at least 8+prec characters */
+ char *ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
+ char *ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
 ~~~
 # Options
 ya_sprintf is very configurable at compile time via #define statements, mainly to allow it to exactly emulate the output from a particular compiler (this is how the test program works).
