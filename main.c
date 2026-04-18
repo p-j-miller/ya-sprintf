@@ -73,14 +73,8 @@ The overhead of using denormalised numbers appears to be effectively zero with A
  https://soundquality.org/2025/09/fading-audio-is-rough-on-cpus/ says "older processors like Intel Pentium 4 struggled significantly when processing these subnormal values", 
  "It seems that for Intel CPUs it stopped being an issue with Sandybridge. I have a 2014 laptop with no subnormal penalty at all", 
  "AMD Ryzen seems to only take a handful of extra clock cycles". The Intel Sandybridge was introduced in 2011 and discontinued in 2013, suggesting that in 2026 this is not an issue.
-  
-
-Note that for recent gcc releases to compile correctly (passing this test program) for windows 32 then gcc needs the -fexcess-precision=standard option (this is present in the example command lines above).
-This is needed for gcc 15.2.0 (for both MSVCRT and UCRT), and is not required for gcc 9.2.0 ( https://github.com/google/highway/issues/1708 suggests its required for gcc 13 and above).
-Compiling for windows 64 bit works without a -fexcess-precision=standard argument to gcc (but it's recommended to add it in case things change with a future gcc release ) - adding it made no changes to the run-time of the test program.
 
 All gcc (15.2.0) arguments are listed at https://gcc.gnu.org/onlinedocs/gcc-15.2.0/gcc/Invoking-GCC.html , with x86 specific ones at https://gcc.gnu.org/onlinedocs/gcc-15.2.0/gcc/x86-Options.html
-
 
 The Pentium4 was the 1st Intel processor supporting sse2 and was launched in November 2000 initially as a 32 bit only single core processor, SSE2 was also the 1st floating point unit to fully comply with the IEEE 754 standard.
 It is possible to put this within the source files as #pragma GCC target("sse2") , which HAS been done here - but note it had to be added to this file as well which may be easy to forget.
@@ -144,16 +138,71 @@ Null (timing baseline)	44.9225			164.968			0
 	
 /* 
 
-Expected output with both PART1 and PART2 defined on a 64 bit WinLibs gcc compiler showing clean compile & execution (using ryu for double->string conversions):
+Expected output with both PART1 and PART2 defined on a 64 bit WinLibs gcc compiler showing clean compile (but with some #pragma messages which are purely for information and do not count as errors or warnings) & execution (using ryu for double->string conversions):
 
 D:\>cd D:\dev-cpp-files\ya-sprintf
 
-D:\dev-cpp-files\ya-sprintf>C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -Wall -m64 -fexcess-precision=standard -Ofast  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
+D:\dev-cpp-files\ya-sprintf>C:\winlibs\winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-13.0.0-r2\mingw64\bin\gcc -Wall -m64  -Ofast  -std=gnu99 -I. main.c ../atof-and-ftoa/atof.c ../double-double/double-double.c ../u2_64-128bits-with-two-u64/u2_64.c ../my_printf/my_printf.c ../nan_type/nan_type.c ryu/d2fixed_ya_sprintf.c ryu/s2d_fast_atof.c ya-dconvert.c ../hr_timer/hr_timer.c ../fma/fmaq.c -lquadmath -static -o test.exe
+In file included from ya_sprintf.h:387,
+                 from main.c:614:
+ya-dconvert.h: In function 'bswap64':
+ya-dconvert.h:198:19: note: '#pragma message: bswap64() using __builtin_bswap64'
+  198 |           #pragma message( "bswap64() using __builtin_bswap64")
+      |                   ^~~~~~~
+ya-dconvert.h: In function 'ya_clz':
+ya-dconvert.h:219:17: note: '#pragma message: ya_clz() using __builtin_clzll()'
+  219 |         #pragma message( "ya_clz() using __builtin_clzll()")
+      |                 ^~~~~~~
+ya-dconvert.h: In function 'ya_clz32':
+ya-dconvert.h:275:19: note: '#pragma message: ya_clz32() using __builtin_clz(x)'
+  275 |           #pragma message( "ya_clz32() using __builtin_clz(x)")
+      |                   ^~~~~~~
+ya-dconvert.h: In function 'ya_ctz64':
+ya-dconvert.h:316:18: note: '#pragma message: ya_ctz64() using __builtin_ctzll()'
+  316 |          #pragma message( "ya_ctz64() using __builtin_ctzll()")
+      |                  ^~~~~~~
+In file included from ../atof-and-ftoa/atof.c:117:
+D:/dev-cpp-files/ya-sprintf/ya-dconvert.h: In function 'bswap64':
+D:/dev-cpp-files/ya-sprintf/ya-dconvert.h:198:19: note: '#pragma message: bswap64() using __builtin_bswap64'
+  198 |           #pragma message( "bswap64() using __builtin_bswap64")
+      |                   ^~~~~~~
+D:/dev-cpp-files/ya-sprintf/ya-dconvert.h: In function 'ya_clz':
+D:/dev-cpp-files/ya-sprintf/ya-dconvert.h:219:17: note: '#pragma message: ya_clz() using __builtin_clzll()'
+  219 |         #pragma message( "ya_clz() using __builtin_clzll()")
+      |                 ^~~~~~~
+D:/dev-cpp-files/ya-sprintf/ya-dconvert.h: In function 'ya_clz32':
+D:/dev-cpp-files/ya-sprintf/ya-dconvert.h:275:19: note: '#pragma message: ya_clz32() using __builtin_clz(x)'
+  275 |           #pragma message( "ya_clz32() using __builtin_clz(x)")
+      |                   ^~~~~~~
+D:/dev-cpp-files/ya-sprintf/ya-dconvert.h: In function 'ya_ctz64':
+D:/dev-cpp-files/ya-sprintf/ya-dconvert.h:316:18: note: '#pragma message: ya_ctz64() using __builtin_ctzll()'
+  316 |          #pragma message( "ya_ctz64() using __builtin_ctzll()")
+      |                  ^~~~~~~
+In file included from ya-dconvert.c:54:
+ya-dconvert.h: In function 'bswap64':
+ya-dconvert.h:198:19: note: '#pragma message: bswap64() using __builtin_bswap64'
+  198 |           #pragma message( "bswap64() using __builtin_bswap64")
+      |                   ^~~~~~~
+ya-dconvert.h: In function 'ya_clz':
+ya-dconvert.h:219:17: note: '#pragma message: ya_clz() using __builtin_clzll()'
+  219 |         #pragma message( "ya_clz() using __builtin_clzll()")
+      |                 ^~~~~~~
+ya-dconvert.h: In function 'ya_clz32':
+ya-dconvert.h:275:19: note: '#pragma message: ya_clz32() using __builtin_clz(x)'
+  275 |           #pragma message( "ya_clz32() using __builtin_clz(x)")
+      |                   ^~~~~~~
+ya-dconvert.h: In function 'ya_ctz64':
+ya-dconvert.h:316:18: note: '#pragma message: ya_ctz64() using __builtin_ctzll()'
+  316 |          #pragma message( "ya_ctz64() using __builtin_ctzll()")
+      |                  ^~~~~~~
 
 D:\dev-cpp-files\ya-sprintf>test
 __GNUC__ defined, __GNUC__=15 __GNUC_MINOR__=2
 _M_X64 is defined (64 bit)
+_M_AMD64 is defined (64 bit)
 __SSE2__ is defined
+__SSE_MATH__ is defined [default on -m64, with -m32 needs -mfpmath=sse and -msse or above
+__SSE2_MATH__ is defined [default on -m64, with -m32 needs -mfpmath=sse and -msse2
 __MINGW32__ is defined
 __USE_MINGW_ANSI_STDIO is defined as 0
 __MINGW64__ is defined
@@ -163,6 +212,8 @@ _WIN32 is defined
 _WIN64 is defined
 __builtin_bswap64() is available
 __builtin_clzll is available
+__builtin_clz is available
+__builtin_ctzll is available
 YA_SP_NO_NEG_LEADINGPLUS is defined
 YA_SP_NO_NEG_LEADINGSPACE is defined
 YA_SP_A_FMT_ALT4 is defined
@@ -179,6 +230,15 @@ LDBL_MAX_10_EXP defined and equal to 4932 meaning we have "true" long doubles
 __SIZEOF_FLOAT128__ is defined as 16
 __SIZEOF_INT128__ is defined as 16
 Byte order is LITTLE ENDIAN (1234)
+Runtime processor capability detection:
+ sse
+ sse2
+ sse3
+ sse4.1
+ sse4.2
+ avx
+ avx2
+
 Microsoft runtime: %n support is enabled
 
 Using my_sprintf() - which works around limitations of native sprintf()
@@ -206,8 +266,8 @@ Starting PART1 sprintf tests:
   Just checked -1.25007957045730041e+180
   Just checked -4.23632488631213564e-203
   Just checked -7.7049343115635846e-16
- All double round loop tests completed in 31.7012 secs
- Average time per test was 587.3 ns
+ All double round loop tests completed in 31.5501 secs
+ Average time per test was 584.5 ns
  53979237 tests 2695716 differences
  Tested ya_sprintf() double-double round loop:
  0 errors when 21 sf string converted back to a double (0 are 1 bit) (sprintf gives 0 differences)
@@ -358,7 +418,7 @@ Now checking long doubles:
 31 sig fig 30129 tests: 39779 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
  Should show 0 string differences at <=18 sig figs and zero round the loop errors for >= 21 sig figs
 
-At end of Part 1 after 103.583 secs : 58494990 tests, 0 errors
+At end of Part 1 after 103.323 secs : 58494990 tests, 0 errors
 
 Starting PART2 sprintf tests:
 Constant strings:
@@ -416,7 +476,7 @@ Constant strings:
   -1 (=-1) 340282366920938463463374607431768211455(= -1 as signed128) 3.40282e+38 (same as float128)
   0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000099 (998 zeros then 99)
   0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000099 (998 zeros then 99 to stderr)
-All tests completed in 105.277 secs
+All tests completed in 104.875 secs
 PART2: 1911700 sprintf tests completed, no errors found
 Test program finished - a total of 60406690 tests executed
 */
@@ -2396,6 +2456,7 @@ int main(int argc, char *argv[])
   _control87(_DN_SAVE, _MCW_DN);     /* set FPU control word to allow denorms - see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/control87-controlfp-control87-2?view=msvc-170&redirectedfrom=MSDN */
   //_control87(0, 0x03000000); // values from   https://doxygen.reactos.org/d2/d35/sdk_2include_2ucrt_2float_8h.html &  https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/control87-controlfp-control87-2?view=msvc-170
 #endif
+
 #ifdef __clang__
  printf("__clang__ defined =%u\n",__clang__);
 #endif
@@ -2409,14 +2470,75 @@ int main(int argc, char *argv[])
  printf("__BORLANDC__ defined =0X%x __CODEGEARC_VERSION__=0X%x \n",__BORLANDC__,__CODEGEARC_VERSION__);
 #endif
 #ifdef _M_IX86
- printf("_M_IX86 is defined (32 bit)\n"); /* defined for W32 */
+ printf("_M_IX86 is defined (32 bit)\n"); /* defined for "Intel x86" W32 on almost all compilers - see https://github.com/cpredef/predef/blob/master/Architectures.md  */
 #endif
 #ifdef _M_X64
  printf("_M_X64 is defined (64 bit)\n"); /* defined for W64 */
 #endif
+#ifdef __i386__
+ printf("__i386__ is defined (32 bit)\n"); // defined for at least GCC,Clang,Intel
+#endif
+// from https://jdebp.uk/FGA/predefined-macros-processor.html with some minor changes to fix missing "defined" operators
+#if defined(__386__) || defined(_M_I386) /*OpenWatcom*/ \
+   || (defined(__DMC__) && defined(_M_IX86)) /*DigitalMars*/ \
+   || (defined(_MSC_VER) && _M_IX86) /*MSVC++*/ \
+   || defined(__i386__) /*GCC,Clang,Intel*/
+  printf("\"Intel\" 32 bit Architecture detected\n");
+#endif
+#ifdef  _M_AMD64
+ printf("_M_AMD64 is defined (64 bit)\n");/* defined with AMD/Intel 64 bit [ not directly by compiler, but in a header file ] */
+#endif
+#ifdef __SSE1__
+ printf("__SSE1__ is defined\n");
+#endif
 #ifdef __SSE2__
  printf("__SSE2__ is defined\n");
 #endif
+#ifdef __SSE3__
+ printf("__SSE3__ is defined\n");
+#endif
+#ifdef __SSE4_1__
+ printf("__SSE4_1__ is defined\n");
+#endif
+#ifdef __SSE4_2__
+ printf("__SSE4_2__ is defined\n");
+#endif
+#ifdef __SSE_MATH__
+ printf("__SSE_MATH__ is defined [default on -m64, with -m32 needs -mfpmath=sse and -msse or above\n"); // defined by either -m64 or -mfpmath=sse with -msse
+#endif
+#ifdef __SSE2_MATH__
+ printf("__SSE2_MATH__ is defined [default on -m64, with -m32 needs -mfpmath=sse and -msse2\n"); // defined by either -m64 or -mfpmath=sse with -msse2
+#endif
+#ifdef __SSSE3__
+ printf("__SSSE3__ is defined\n");
+#endif
+// avx options:
+#ifdef __AVX__
+ printf("__AVX__ is defined\n");
+#endif
+#ifdef __AVX2__
+ printf("__AVX2__ is defined\n");
+#endif
+#ifdef __AVX512BW__
+ printf("__AVX512BW__ is defined\n");
+#endif
+#ifdef __AVX512CD__
+ printf("__AVX512CD__ is defined\n");
+#endif
+#ifdef __AVX512DQ__
+ printf("__AVX512DQ__ is defined\n");
+#endif
+#ifdef __AVX512F__
+ printf("__AVX512F__ is defined\n");
+#endif
+#ifdef __AVX512VL__
+ printf("__SSE1__ is defined\n");
+#endif
+
+#ifdef __ASSOCIATIVE_MATH__
+ printf("__ASSOCIATIVE_MATH__ is defined and equal to %d [ set by gcc -Ofast ]\n",__ASSOCIATIVE_MATH__); // defined by -OFast
+#endif
+
 #ifdef __MINGW32__ 
  printf("__MINGW32__ is defined\n");
  #ifdef __USE_MINGW_ANSI_STDIO
@@ -2448,6 +2570,7 @@ int main(int argc, char *argv[])
 #ifdef __linux
  printf("__linux is defined\n");
 #endif
+
 #if defined(__has_builtin) && __has_builtin(__builtin_bswap64) /*  is builtin for gcc and clang */
 printf("__builtin_bswap64() is available\n");
 #endif 
@@ -2457,6 +2580,10 @@ printf("__builtin_clzll is available\n");
 #if defined(__has_builtin) && __has_builtin(__builtin_clz) /*  is builtin for gcc and clang */
 printf("__builtin_clz is available\n");
 #endif
+#if defined(__has_builtin) && __has_builtin(__builtin_ctzll) /*  is builtin for gcc and clang */
+printf("__builtin_ctzll is available\n");
+#endif
+
 #ifdef  YA_SP_LINUX_STYLE /* tell ya_printf() to print to match Linux gcc libc */
  printf("YA_SP_LINUX_STYLE is defined\n");
 #endif
@@ -2549,6 +2676,48 @@ printf("sizeof(long double)=%zu sizeof(double)=%zu sizeof(float)=%zu sizeof(int)
 #elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
  printf("Byte order is BIG ENDIAN (%d)\n",__ORDER_BIG_ENDIAN__);
 #endif
+
+// runtime tests
+#if defined(__has_builtin) && __has_builtin(__builtin_cpu_supports)
+ puts("Runtime processor capability detection:");
+ if(__builtin_cpu_supports("sse")) puts(" sse");
+ if(__builtin_cpu_supports("sse2")) puts(" sse2");
+ if(__builtin_cpu_supports("sse3")) puts(" sse3");
+ if(__builtin_cpu_supports("sse4.1")) puts(" sse4.1");
+ if(__builtin_cpu_supports("sse4.2")) puts(" sse4.2");
+ if(__builtin_cpu_supports("avx")) puts(" avx");
+ if(__builtin_cpu_supports("avx2")) puts(" avx2");
+ puts("");// prints newline (puts always adds newline)
+#else
+ puts("Runtime processor capability detection not available");
+#endif
+/* now do a runtime check that processor matches compile time requirements */
+#if defined(__has_builtin) && __has_builtin(__builtin_cpu_supports)
+ #ifdef __SSE__
+  if(!__builtin_cpu_supports("sse")) {fputs(" Error: SSE required but not available\n",stderr); exit(1);}
+ #endif
+  #ifdef __SSE2__
+  if(!__builtin_cpu_supports("sse2")) {fputs(" Error: SSE2 required but not available\n",stderr); exit(1);}
+ #endif
+  #ifdef __SSE3__
+  if(!__builtin_cpu_supports("sse3")) {fputs(" Error: SSE3 required but not available\n",stderr); exit(1);}
+ #endif
+  #ifdef __SSE4_1__
+  if(!__builtin_cpu_supports("sse4.1")) {fputs(" Error: SSE4.1 required but not available\n",stderr); exit(1);}
+ #endif
+  #ifdef __SSE4_2__
+  if(!__builtin_cpu_supports("sse4.2")) {fputs(" Error: SSE4.2 required but not available\n",stderr); exit(1);}
+ #endif
+  #ifdef __AVX__
+  if(!__builtin_cpu_supports("avx")) {fputs(" Error: AVX required but not available\n",stderr); exit(1);}
+ #endif
+  #ifdef __AVX2__
+  if(!__builtin_cpu_supports("avx2")) {fputs(" Error: AVX2 required but not available\n",stderr); exit(1);}
+ #endif
+#else
+ #pragma message( "__builtin_cpu_supports() NOT available for runtime processor capability detection")
+#endif
+
 #if defined(_WIN32) && defined(_UCRT) 
  _set_printf_count_output(1); /* enable %n for microsoft runtime - see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/set-printf-count-output?view=msvc-170 */
  printf("Microsoft runtime: %%n support is %s\n",_get_printf_count_output() ? "enabled" : "disabled" );

@@ -1,4 +1,4 @@
-/* 	ya-dconvert.c
+﻿/* 	ya-dconvert.c
 	=============
 	
    Support functions for double->string (used by ya_sprintf) and string->double (used by fast_strtod()).
@@ -8,6 +8,12 @@
    Written by Peter Miller 11-3-2026
    
    This version uses the fpfmt algorithms as described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof 
+   
+   April 2026 - four directly callable functions added (previoulsy only provided support functions for ya_sprintf() :
+ 	 void ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; // prec is required number of digits after decimal point - this is equivalent to (but faster than) sprintf(dst,"%.*e",prec,f)
+	 void ya_dconvert_gfmt(char *dst, double f, int32_t prec);  // prec is required number of digits - this is equivalent to (but faster than) sprintf(dst,"%.*g",prec,f)   
+     void ya_shortd(char *dst, double f) ;// gives the shortest (smallest number of characters) representation of double f that is round trip exact
+     void ya_shortf(char *dst, float f) ;// gives the shortest (smallest number of characters) representation of float f that is round trip exact
 */
 /*----------------------------------------------------------------------------
  * MIT License:
@@ -910,7 +916,7 @@ static inline int32_t skewed(int32_t bin_exp)
  return (bin_exp*631305 - 261663) >> 21;
 }
 
-// This structure is the C implementation of that show in the fpfmt paper "Fast, Accurate Scaling", pp 18
+// This structure is the C implementation of that shown in the fpfmt paper "Fast, Accurate Scaling", pp 18
 typedef struct Scalers Scalers;
 struct Scalers {
 	u2_64 pm;// unsigned 128 bit variable
@@ -962,6 +968,8 @@ static inline Scalers prescale(int e, int p, int lp) {
 //		 If c.s==0 "mask" will be 0 (see code below) and so (hi & mask)==mask becomes (hi & 0)==0 => 0==0 which is always true, so the 2nd multiply will be correctly done in this case
 //		 c.s <0  is trapped by the assert as it should never happen [ c.s is used in shifts where negative shifts are not defined by the C standard ]
 //		 So nothing special (apart from assert) is needed for case 3).
+//
+// Russ Cox, the creator of the fpfmt algorithm has confirmed by email that this approach is correct.
 //
 // The 64 (if defined(__SIZEOF_INT128__)) and 32 bit C code is given below:
 //
@@ -1082,7 +1090,10 @@ static const uint64_t u64powersOf10[]=
 					UINT64_C(1000000000000000000), // 18 
 					UINT64_C(10000000000000000000)  // 19  2^64=1.8446744073709551616e+19 so 10^19 should fit into a uint64
 				};
-
+static const uint32_t u32powersOf10[] =
+  {1, 10, 100, 1000, 10000, 100000,
+    1000000, 10000000, 100000000, 1000000000};// 2^32=4,294,967,296 so 1,000,000,000 is the largest possible power of 10, = u32powersOf10[9]
+    
 // This is the algorithm from the fpfmt paper "Fixed-Width Printing" page 9
 static inline void FixedWidth(uint64_t m,int e, int n, uint64_t *dp, int *pp) 
 {
@@ -1110,7 +1121,7 @@ static inline uint16_t Digits(uint64_t d)
 static inline uint16_t Digits32(uint32_t d)
 {
  int nd = compute_dec_exp(32-ya_clz32(d));
- return nd + (d >= u64powersOf10[nd]);
+ return nd + (d >= u32powersOf10[nd]);
 }
 
 // convert 64 mantissa to at most 17 digits, and typically 16 digits
@@ -1168,7 +1179,6 @@ static int inline mantissa64_to_stringBCD_notrailing0(char *dst, uint64_t d64, i
 	}
  return nd-tz;
 }
-
 
 // Short computes the shortest formatting of f,
 // using as few digits as possible that will still round trip
@@ -1250,7 +1260,6 @@ static int Short_d(uint64_t ieeeMantissa,uint32_t ieeeExponent, char *dst, int32
    It always writes 8 characters as this is faster - this is not an issue as buffer should always be large enough for 8 characters.
    Its slightly faster if mantissa32_to_string_notrailing0() is not marked "inline"
 */
-
 static int mantissa32_to_string_notrailing0(char *dst, uint32_t d32, int nd)
 {assert(nd>0 && nd<=8);
  // convert to 8 digit BCD using SWAR code 
@@ -1272,6 +1281,7 @@ static int mantissa32_to_string_notrailing0(char *dst, uint32_t d32, int nd)
 // uses SWAR BCD converter (as above)
 // always copies 8 or 9 digits to dst - there should always be this much room 
 // It does NOT terminate the resultant string with a \0
+
 static void inline mantissa32_to_stringBCD(char *dst, uint32_t d32, int nd)
 {assert(nd>=0 && nd<=9);
  if (nd>8) 
@@ -1306,15 +1316,19 @@ static void inline mantissa32_to_stringBCD(char *dst, uint32_t d32, int nd)
 static void inline mantissa32_to_string(char *dst, uint32_t d32, int nd)
 {assert(nd>=0 && nd<=10);
  if (nd>=8) 
-	{/* use uitoa8 from ya-dconvert.h to quickly convert 8 digits  */
+	{/* convert 8 digits  */
 	 uint32_t d32_1e8=d32/100000000;
 	 uint32_t x = d32 - d32_1e8*100000000;// x = d32 % 100000000;
 	 d32=d32_1e8;// d32 /= 100000000;	 
 	 nd-=8;
-	 ya_uitoa8(dst+nd,x);// (quickly) convert 8 digits to ascii - this is ~1ns faster	
+	 // convert 8 using BCD SWAR - this is ~ 1.5ns/test faster at w64 and same speed as ya_uitoa8() for w32 
+	 const uint64_t zeros = 0x0101010101010101u * '0';
+	 uint64_t a_b_c_d_e_f_g_h = ya_to_BCD8(x); 
+	 a_b_c_d_e_f_g_h= is_big_endian() ? a_b_c_d_e_f_g_h | zeros: bswap64(a_b_c_d_e_f_g_h |zeros);// convert to ascii chars and if necessary swap order ready for memcpy to dst    
+	 memcpy(dst+nd,&a_b_c_d_e_f_g_h,8);   
 	}
  if(nd>=4) 
-	{
+	{/* convert 4 digits */
 	 uint32_t x = d32 % 10000;// note the compiler will convert these to * and shift (and give us d/=10000 at the same time). 
 	 d32 /= 10000;
 	 nd-=4;
@@ -1391,7 +1405,7 @@ static int Short_f(uint32_t ieeeMantissa,uint32_t ieeeExponent, char *dst, int32
  	 dv = uround32(uscale32(m, pre));
 	}
  dlen=Digits32(dv); 
- mantissa32_to_stringBCD(dst, dv, dlen);	//  could also be mantissa32_to_string()
+ mantissa32_to_stringBCD(dst, dv, dlen);	//  could be mantissa32_to_string() or mantissa32_to_stringBCD(). "BCD" version is on average ~ 1ns/test faster for both w32 & w64
  *p=-pv;
  return dlen;// no trailing zeros
 }
@@ -1422,7 +1436,7 @@ static void mantissa64_to_string(char *dst, uint64_t d64, int nd)
 	 ya_uitoa10(dst+nd,x);// (quickly) convert 10 digits to ascii	
 	}
  // now we can swap to a uint32_t which is faster as %,/ get converted to * and shifts in both 32 and 64 bit compilers.  2^32 is 4,294,967,296 while we compare with 1e9=1,000,000,000 in the line above ensuring a u32 is OK.
- mantissa32_to_string(dst,(uint32_t)d64,nd); // note mantissa32_to_string() is marked "inline" so there is no over head in making this function call	
+ mantissa32_to_string(dst,(uint32_t)d64,nd); // note mantissa32_to_string() is marked "inline" so there is no over head in making this function call. Note we cannot call mantissa32_to_stringBCD() here as that might overwrite result from ya_uitoa10().	
 }
 
 
@@ -1474,9 +1488,9 @@ int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, 
 }	
 
 
-/* user function that can be directly called to convert double -> string
+/* user function that can be directly called to convert double -> string, , returns the same result as sprintf(dst,"%.*e",prec,f) 
 */
-void ya_dconvert_fixed(char *dst, double f, uint32_t prec)  /* prec is required number of digits after decimal point */
+char * ya_dconvert_efmt(char *dst, double f, uint32_t prec)  /* prec is required number of digits after decimal point , returns pointer to trailing 0 in string */
 {
  const union {
 	double real_d;
@@ -1491,13 +1505,27 @@ void ya_dconvert_fixed(char *dst, double f, uint32_t prec)  /* prec is required 
 	 if(vsign) *dst++='-';
 	 if(mantissa) // nan
 		{ if(u.bits_d==0xFFF8000000000000ULL)
-			strcpy(dst,"nan(ind)");
+			{//strcpy(dst,"nan(ind)");
+			 memcpy(dst,"nan(ind)",9); // 9 includes trailing 0
+			 dst+=8;
+			}
 		  else if( (mantissa & (1ull << 51)) == 0)
-			 strcpy(dst,"nan(snan)");
-		 else strcpy(dst,"nan");
+			 {//strcpy(dst,"nan(snan)");
+			  memcpy(dst,"nan(snan)",10);// 10 includes trailing 0
+			  dst+=9;
+			 }
+		 else
+		 	{// strcpy(dst,"nan");
+		 	 memcpy(dst,"nan",4);// 4 includes trailing 0
+			 dst+=3;
+		 	}
 		}
-	 else strcpy(dst,"inf");
-	 return;
+	 else 
+	 	{//strcpy(dst,"inf");
+		 memcpy(dst,"inf",4);// 4 includes trailing 0
+		 dst+=3;	 	
+	 	}
+	 return dst;
 	}	 	
  if(expo==0 && mantissa==0)
 	{// zero is special as we cannot scale it into range : return 0.00000e00
@@ -1507,8 +1535,10 @@ void ya_dconvert_fixed(char *dst, double f, uint32_t prec)  /* prec is required 
 	 if(prec>0) *dst++='.';
 	 for(int i=1;i<=prec;++i)
 		*dst++='0';
-	 strcpy(dst,"e+00");
-	 return;
+	 //strcpy(dst,"e+00");
+	 memcpy(dst,"e+00",5);// 5 includes trailing 0
+	 dst+=4;	 
+	 return dst;
 	}	
 
  if(vsign) 
@@ -1539,6 +1569,133 @@ void ya_dconvert_fixed(char *dst, double f, uint32_t prec)  /* prec is required 
  ya_uitoa2(dst,tens);// other 2 digits of exponent
  dst+=2;
  *dst=0; // terminate string
+ return dst;
+}
+
+/* user function that can be directly called to convert double -> string, returns the same result as sprintf(dst,"%.*g",prec,f) 
+   C23 standard says for %g:
+	   A double argument representing a floating-point number is converted in style f or e, depending on the value converted
+	and the precision. Let P equal the precision if nonzero, 6 if the precision is omitted, or 1 if
+	the precision is zero. Then, if a conversion with style E would have an exponent of X:
+	if P > X ≥ −4, the conversion is with style f  and precision P − (X + 1).
+	otherwise, the conversion is with style e  and precision P − 1.
+	Finally, any trailing zeros are removed from the fractional portion
+	of the result and the decimal-point character is removed if there is no fractional portion
+	remaining.
+	A double argument representing an infinity or NaN is converted in the style of an f or F
+	conversion specifier.
+
+ In this function prec is signed and a negative number is taken as meaning the default (6) is required
+*/
+char * ya_dconvert_gfmt(char *dst, double f, int32_t prec)  /* prec is required number of digits , returns pointer to trailing 0 in string   */
+{
+ const union {
+	double real_d;
+	uint64_t bits_d;
+  } u = { f };
+	// Decode bits into sign, mantissa, and exponent.
+ const bool vsign = (u.bits_d  & ((uint64_t)1<<63)) != 0;// true if v is negative 1<<63 as sign bit is the msb 
+ uint64_t mantissa = u.bits_d & 0xFFFFFFFFFFFFFULL;
+ int expo=(int)((u.bits_d>>52) & 0x7ff) ; 
+ if(expo==0x7ff)
+	{// nan or inf
+	 if(vsign) *dst++='-';
+	 if(mantissa) // nan
+		{ if(u.bits_d==0xFFF8000000000000ULL)
+			{//strcpy(dst,"nan(ind)");
+			 memcpy(dst,"nan(ind)",9); // 9 includes trailing 0
+			 dst+=8;
+			}
+		  else if( (mantissa & (1ull << 51)) == 0)
+			 {//strcpy(dst,"nan(snan)");
+			  memcpy(dst,"nan(snan)",10);// 10 includes trailing 0
+			  dst+=9;
+			 }
+		 else
+		 	{// strcpy(dst,"nan");
+		 	 memcpy(dst,"nan",4);// 4 includes trailing 0
+			 dst+=3;
+		 	}
+		}
+	 else 
+	 	{//strcpy(dst,"inf");
+		 memcpy(dst,"inf",4);// 4 includes trailing 0
+		 dst+=3;	 	
+	 	}
+	 return dst;
+	}	 	
+ if(expo==0 && mantissa==0)
+	{// zero is special as we cannot scale it into range : return [-]0
+	 //printf("v (%g) == zero!\n",v);
+	 if(vsign) memcpy(dst,"-0",3);// 3 to include null
+	 else memcpy(dst,"0",2);
+	 return dst+1+vsign;
+	}	
+
+ if(vsign) 
+	{*dst++='-';
+	}	
+ // int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, uint32_t precision, char* buffer,int32_t *decimal_pos) 
+ int32_t tens; // decimal exponent
+ if(prec==0) prec=1; //  %g has a default precision of 6, and 0=>1
+ else if(prec<0) prec=6;
+ int dlen=ya_d2exp_buffered_n_ya_sprintf(mantissa,expo,prec-1,dst+1,&tens);// This function actually does all the hard work. Prec-1 as prec for %g is number of digits, whereas for %e format prec is number of digits after decimal point
+ if(prec>tens && tens>=-4 ) // C standard says prec>tens>=-4 see whole text from standard above 
+ 	{// need to output in fixed point format as sprintf("%.*f",prec-(tens+1),f)
+ 	*dst='X';// guarantee remove trailing zero loop below terminates (1st digit should always be <>0 as zero is trapped elsewhere, so this should not be necessary). Mantissa is at dst+1 onwards
+ 	// remove trailing zero's [ in some cases below we add back zero's which we may have removed here, but trapping that specific case would make the code more complex ]
+ 	while(dst[dlen]=='0') dlen--; // will eventually terminate on a non-zero digit (or 'X'); Using X as a sentinel is 0.2ns/conversion faster than using while(dlen>0 && dst[dlen]=='0')
+ 	if(tens==0)
+ 		{// simple case x.xxx with no exponent
+		*dst=dst[1];// make space for decimal point
+ 		 dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
+ 		 dst+=dlen+(dlen>1);// need dp if more than 1 digit 
+	 	 *dst=0; return dst;
+	 	}
+	 else if(tens>0)
+	 	{ // don't need exponent, but need to put dp in correct place - will create something like "10.12"
+	 	 int minl=tens+1>dlen?dlen:tens+1;
+	 	 memmove(dst,dst+1,minl); // memmove allows overlapping areas
+	 	 dst[minl]='.';
+	 	 if(dlen<=tens) 
+		  	{memset(dst+minl,'0',tens+1-dlen);// 1e1 =>10 so needs extra zero's adding
+		  	 dst+=tens+1;
+		  	}
+		 else dst+=dlen+(dlen>1+tens);// need dp if a digit after dp
+	 	 *dst=0; return dst;
+	 	}
+	 // tens < 0, again don't need exponent but need leading zero's after dp.
+	 memmove(dst+(-tens)+1,dst+1,dlen);// move right 
+	 *dst='0';
+	 dst[1]='.';
+	 memset(dst+2,'0',-tens-1);
+	 dst+=dlen+(-tens)+1; // +1 for dp
+	 *dst=0; return dst;
+	}
+ // if we get here result wil be in %e format
+ *dst=dst[1];// make space for decimal point
+ dst[1]='.'; // add in decimal point (this is wasted if we end up with just 1 digit, but avoids any conditional code)
+ // remove trailing zero's
+ while(dst[dlen]=='0') dlen--; // will eventually terminate on decimal point or a non-zero digit
+ dst+=dlen+(dlen>1);// dlen>1 adds space for decimal point 
+ // have written mantissa, now deal with exponent
+ // 1st output sign of exponent (+/-) - I tried the "branchless" approach from zmij and it was slightly slower when used here
+ *dst++='e';
+ if(tens<0)
+ 	{*dst++='-';
+ 	 tens= -tens;
+ 	}
+ else *dst++='+';
+ // now print exp - this is the fastest of many methods I tried
+// 3 digits of exponent for double - max exponent is +308, min -324 - always print at least 2 digits 
+ if(tens>=100)
+ 	{*dst++='0'+tens/100;// 3rd digit if required
+ 	 tens%=100;
+ 	}
+ ya_uitoa2(dst,tens);// other 2 digits of exponent
+ dst+=2;
+ *dst=0; // terminate string
+ return dst;
 }
 
 #define REAL_SHORTEST /* if defined print shortest string that round-loops correctly using fixed point or exponential format whichever is shorter. if not defined always print as x.xxe+/-EE but with as few as possible characters in the mantissa */
@@ -1546,7 +1703,7 @@ void ya_dconvert_fixed(char *dst, double f, uint32_t prec)  /* prec is required 
 	/* this define only effects ya_shortd() and ya_shortf() */
 	
 /* This function gives double->"shortest string"  */
-void ya_shortd(char *dst, double f) 
+char * ya_shortd(char *dst, double f) /* returns pointer to trailing 0 in string */
 {
  union {
 	double real_d;
@@ -1561,20 +1718,34 @@ void ya_shortd(char *dst, double f)
 	 if(vsign) *dst++='-';
 	 if(mantissa) // nan
 		{ if(u.bits_d==0xFFF8000000000000ULL)
-			strcpy(dst,"nan(ind)");
+			{//strcpy(dst,"nan(ind)");
+			 memcpy(dst,"nan(ind)",9); // 9 includes trailing 0
+			 dst+=8;
+			}
 		  else if( (mantissa & (1ull << 51)) == 0)
-			 strcpy(dst,"nan(snan)");
-		 else strcpy(dst,"nan");
+			 {//strcpy(dst,"nan(snan)");
+			  memcpy(dst,"nan(snan)",10);// 10 includes trailing 0
+			  dst+=9;
+			 }
+		 else
+		 	{// strcpy(dst,"nan");
+		 	 memcpy(dst,"nan",4);// 4 includes trailing 0
+			 dst+=3;
+		 	}
 		}
-	 else strcpy(dst,"inf");
-	 return;
+	 else 
+	 	{//strcpy(dst,"inf");
+		 memcpy(dst,"inf",4);// 4 includes trailing 0
+		 dst+=3;	 	
+	 	}
+	 return dst;
 	}	 	
  if(expo==0 && mantissa==0)
 	{// zero is special as we cannot scale it into range : return 0
 	 //printf("v (%g) == zero!\n",v);
-	 if(vsign) *dst++='-';
-	 strcpy(dst,"0");
-	 return;
+	 if(vsign) memcpy(dst,"-0",3);// 3 to include null
+	 else memcpy(dst,"0",2);
+	 return dst+1+vsign;
 	}	
 
  if(vsign) 
@@ -1597,7 +1768,7 @@ void ya_shortd(char *dst, double f)
 		*dst=dst[1];// make space for decimal point
  		 dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
  		 dst+=dlen+(dlen>1);// need dp if more than 1 digit 
-	 	 *dst=0; return;
+	 	 *dst=0; return dst;
 	 	}
 	 else if(tens>0)
 	 	{ // don't need exponent, but need to put dp in correct place - will create something like "10.12"
@@ -1609,7 +1780,7 @@ void ya_shortd(char *dst, double f)
 		  	 dst+=tens+1;// was tens+1
 		  	}
 		 else dst+=dlen+(dlen>1+tens);// need dp if a digit after dp
-	 	 *dst=0; return;
+	 	 *dst=0; return dst;
 	 	}
 	 // tens < 0, again don't need exponent but need leading zero's before dp.
 	 memmove(dst+(-tens)+1,dst+1,dlen);// move right 
@@ -1617,8 +1788,7 @@ void ya_shortd(char *dst, double f)
 	 dst[1]='.';
 	 memset(dst+2,'0',-tens-1);
 	 dst+=dlen+(-tens)+1; // +1 for dp
-	 *dst=0;
-	 return;
+	 *dst=0; return dst;
 	}
  // print as %e format x.xxxEee	
  *dst=dst[1];// make space for decimal point
@@ -1635,21 +1805,20 @@ void ya_shortd(char *dst, double f)
  	{// 3 digit exponent
 	 *dst='0'+tens/100;// 3rd digit
   	 ya_uitoa2(dst+1,tens%100);// other 2 digits of exponent
-	 dst[3]=0; // terminate o/p string	 
+  	 dst+=3;	 
  	} 
  else if(tens<10)
  	{// only 1 digit exponent 
- 	 *dst='0'+tens;
- 	 dst[1]=0;// terminate o/p string
+ 	 *dst++='0'+tens;
  	}
  else
  	{// 2 digit exponent
   	 ya_uitoa2(dst,tens);// other 2 digits of exponent
-	 dst[2]=0;// terminate o/p string
+	 dst+=2;
 	}
- return;	
+ *dst=0; return dst;	
 }  		
- #else 
+ #else /* simpler solution - always print in exponential format, and always print e+/- then 2 or 3 digit exponent. This is slightly faster, but #if 1 version cretaes less characters so is probably faster overall in almost all use cases */
  *dst=dst[1];// make space for decimal point
  dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
  dst+=dlen+(dlen>1);// need dp if more than 1 digit
@@ -1667,19 +1836,20 @@ void ya_shortd(char *dst, double f)
  	{// 3 digit exponent
 	 *dst='0'+tens/100;// 3rd digit
   	 ya_uitoa2(dst+1,tens%100);// other 2 digits of exponent
-	 dst[3]=0; // terminate o/p string	 
+	 dst+=3;	 
  	} 
  else
  	{// 2 digit exponent
   	 ya_uitoa2(dst,tens);//  2 digits of exponent
-	 dst[2]=0;// terminate o/p string
+	 dst+=2;
 	}
+ *dst=0; return dst;	
 } 
 #endif 	
 
 
 /* This function gives float->"shortest string" */
-void ya_shortf(char *dst, float f) 
+char * ya_shortf(char *dst, float f) /* returns pointer to trailing 0 in string */
 {
  union {
 	float real_d;
@@ -1694,20 +1864,34 @@ void ya_shortf(char *dst, float f)
 	 if(vsign) *dst++='-';
 	 if(ieeeMantissa) // nan
 		{ if(u.bits_d==0xFFC00000)
-			strcpy(dst,"nan(ind)");
+			{//strcpy(dst,"nan(ind)");
+			 memcpy(dst,"nan(ind)",9); // 9 includes trailing 0
+			 dst+=8;
+			}
 		  else if( (ieeeMantissa & (1ull << 22)) == 0)
-			 strcpy(dst,"nan(snan)");
-		 else strcpy(dst,"nan");
+			 {//strcpy(dst,"nan(snan)");
+			  memcpy(dst,"nan(snan)",10);// 10 includes trailing 0
+			  dst+=9;
+			 }
+		 else 
+		 	{// strcpy(dst,"nan");
+		 	 memcpy(dst,"nan",4);// 4 includes trailing 0
+			 dst+=3;
+		 	}
 		}
-	 else strcpy(dst,"inf");
-	 return;
+	 else 
+	 	{//strcpy(dst,"inf");
+		 memcpy(dst,"inf",4);// 4 includes trailing 0
+		 dst+=3;	 	
+	 	}	 
+	 return dst;
 	}	 	
  if(ieeeExponent==0 && ieeeMantissa==0)
 	{// zero is special as we cannot scale it into range : return 0
 	 //printf("v (%g) == zero!\n",v);
-	 if(vsign) *dst++='-';
-	 strcpy(dst,"0");
-	 return;
+	 if(vsign) memcpy(dst,"-0",3);// 3 to include null
+	 else memcpy(dst,"0",2);
+	 return dst+1+vsign;
 	}	
  if(vsign) 
 	{*dst++='-';
@@ -1728,7 +1912,7 @@ void ya_shortf(char *dst, float f)
 		*dst=dst[1];// make space for decimal point
  		 dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
  		 dst+=dlen+(dlen>1);// need dp if more than 1 digit 
-	 	 *dst=0; return;
+	 	 *dst=0; return dst;
 	 	}
 	 else if(tens>0)
 	 	{ // don't need exponent, but need to put dp in correct place - will create something like "10.12"
@@ -1740,7 +1924,7 @@ void ya_shortf(char *dst, float f)
 		  	 dst+=tens+1;// was tens+1
 		  	}
 		 else dst+=dlen+(dlen>1+tens);// need dp if a digit after dp
-	 	 *dst=0; return;
+	 	 *dst=0; return dst;
 	 	}
 	 // tens < 0, again don't need exponent but need leading zero's before dp.
 	 memmove(dst+(-tens)+1,dst+1,dlen);// move right 
@@ -1748,8 +1932,7 @@ void ya_shortf(char *dst, float f)
 	 dst[1]='.';
 	 memset(dst+2,'0',-tens-1);
 	 dst+=dlen+(-tens)+1; // +1 for dp
-	 *dst=0;
-	 return;
+	 *dst=0; return dst;
 	}
  // print as %e format x.xxxEee	
  *dst=dst[1];// make space for decimal point
@@ -1763,16 +1946,16 @@ void ya_shortf(char *dst, float f)
  // don't print "+" for exponent
  if(tens<10)
  	{// only 1 digit exponent 
- 	 *dst='0'+tens;
- 	 dst[1]=0;// terminate string	
+ 	 *dst++='0'+tens;
  	}
  else
  	{// 2 digit exponent
   	 ya_uitoa2(dst,tens);// other 2 digits of exponent
-	 dst[2]=0;// terminate string	
+	 dst+=2;	
 	}
+ *dst=0; return dst;
 }  	
- #else
+ #else /* simpler solution - always print in exponential format, and always print e+/- then 2 digit exponent. This is slightly faster, but #if 1 version cretaes less characters so is probably faster overall in almost all use cases */
  *dst=dst[1];// make space for decimal point
  dst[1]='.'; // add in decimal point (this is wasted if prec==0, but avoids any conditional code)
  dst+=dlen+(dlen>1);// need dp if more than 1 digit 
@@ -1788,6 +1971,7 @@ void ya_shortf(char *dst, float f)
  // 2 digit exponent for floats (e-45 to E+38) - always print  2 digits 
  ya_uitoa2(dst,tens);
  dst[2]=0; // terminate string
+ return dst+2;
 } 	
 #endif 
 

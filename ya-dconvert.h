@@ -43,22 +43,27 @@
 	 #include <stdbool.h> // bool
 	 #include <assert.h>
 	 #include <string.h> // memcpy
-	 // user function that can be directly called to convert double -> string 
-	 void ya_dconvert_fixed(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point */
+	 // user functions that can be directly called to convert double -> string 
+	 // all return a pointer to the trailing '0' in dst which allows another string to be easily added on, or the length calculated without needing to use strcat() or strlen()
+	 // the 1st 2 emulate functionality in sprintf() - but are significantly faster as sprintf() needs to parse the format string and extract the precision
+	 // the two ya_short functions provide functionality not available in sprintf(), which is especially useful when writing numerical data to a file in text format, as writing fewer characters is both faster and gives a smaller file size.
+	 // ya_shortf() also works directly on floats which also gives it a significant speed advantage.
+	 char *ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - this is equivalent to (but faster than) sprintf(dst,"%.*e",prec,f) */
+	 char *ya_dconvert_gfmt(char *dst, double f, int32_t prec);  /* prec is required number of digits - this is equivalent to (but faster than) sprintf(dst,"%.*g",prec,f) . prec of <0 gives default (6)   */
+
+	 // 31/3/2026 Peter Miller added fpfmt short algorithm to convert double->ascii giving the smallest number of characters while remaining round-loop exact
+	 char *ya_shortd(char *dst, double f) ;
+	 
+	 // 31/3/2026 Peter Miller added fpfmt short algorithm to convert float->ascii giving the smallest number of characters while remaining round-loop exact
+	 char *ya_shortf(char *dst, float f) ;
+	 
+	 // "support functions" 
 
 	 // 19/2/2026 Peter Miller interface to ya_sprintf()
 	 int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, uint32_t precision, char* buffer,int32_t *decimal_pos) ;
 
 	 // 27/2/2026 added interface for fast_strtod()
-	 double ya_conv_mant_exp_to_double(bool signedM,uint64_t m10,int32_t dec_exp); // returns m10*1o^dec_exp as a double
-
-	 // 31/3/2026 Peter Miller added fpfmt short algorithm to convert double->ascii giving the smallest number of characters while remaining round-loop exact
-	 void ya_shortd(char *dst, double f) ;
-	 
-	 // 31/3/2026 Peter Miller added fpfmt short algorithm to convert float->ascii giving the smallest number of characters while remaining round-loop exact
-	 void ya_shortf(char *dst, float f) ;
-	 
-	 // "support functions" 
+	 double ya_conv_mant_exp_to_double(bool signedM,uint64_t m10,int32_t dec_exp); // returns m10*1o^dec_exp as a double	 
 	 
 	/* core integer->ascii converters   */
 
