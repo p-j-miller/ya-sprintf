@@ -9,7 +9,7 @@ Libs=
 PrivateResource=
 ResourceIncludes=
 MakeIncludes=
-Compiler=-std=gnu99_@@_-fexcess-precision=standard_@@_
+Compiler=-std=gnu99_@@_-DNDEBUG_@@_-march=native_@@__@@__@@__@@_
 CppCompiler=
 Linker=-lquadmath_@@_-static_@@_
 IsCpp=0
@@ -27,9 +27,9 @@ CommandLine=
 Folders=
 IncludeVersionInfo=0
 SupportXPThemes=0
-CompilerSet=10
-CompilerSettings=0;0;0;0;0;0;4;1;2;0;1;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
-UnitCount=11
+CompilerSet=9
+CompilerSettings=0;0;0;0;0;0;4;2;2;0;1;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+UnitCount=12
 
 [VersionInfo]
 Major=1
@@ -62,16 +62,6 @@ BuildCmd=
 
 [Unit11]
 FileName=ryu\s2d_fast_atof.c
-CompileCpp=0
-Folder=
-Compile=1
-Link=1
-Priority=1000
-OverrideBuildCmd=0
-BuildCmd=
-
-[Unit12]
-FileName=..\double-double\fmaq.c
 CompileCpp=0
 Folder=
 Compile=1
@@ -172,6 +162,26 @@ BuildCmd=
 
 [Unit10]
 FileName=ryu\d2fixed_ya_sprintf.c
+CompileCpp=0
+Folder=
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit13]
+FileName=ya-dconvert.c
+CompileCpp=0
+Folder=
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit12]
+FileName=ya-dconvert.c
 CompileCpp=0
 Folder=
 Compile=1

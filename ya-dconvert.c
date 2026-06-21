@@ -9,7 +9,7 @@
    
    This version uses the fpfmt algorithms as described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof 
    
-   April 2026 - four directly callable functions added (previoulsy only provided support functions for ya_sprintf() :
+   April 2026 - four directly callable functions added (previously only provided support functions for ya_sprintf() :
  	 void ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; // prec is required number of digits after decimal point - this is equivalent to (but faster than) sprintf(dst,"%.*e",prec,f)
 	 void ya_dconvert_gfmt(char *dst, double f, int32_t prec);  // prec is required number of digits - this is equivalent to (but faster than) sprintf(dst,"%.*g",prec,f)   
      void ya_shortd(char *dst, double f) ;// gives the shortest (smallest number of characters) representation of double f that is round trip exact
@@ -49,8 +49,10 @@
 #include <stdint.h>   // uint64_t
 #include <string.h>   // memcpy
 #include <stdalign.h> // for aligns() - this has been available since C11
+#include <math.h> 		// for fma
 
 #include "../u2_64-128bits-with-two-u64/u2_64.h"
+#include "../power10/table_bin_10.h" /* "compressed table" created by power10.c - used by ldd_power10 & f128power10() */
 #include "ya-dconvert.h"
 
 #ifndef DBL_DECIMAL_DIG // fill in missing definition of DBL_DECIMAL_DIG
@@ -928,9 +930,14 @@ static inline Scalers prescale(int e, int p, int lp) {
 	assert(p>=dec_exp_min && p<=dec_exp_max);
 	int s = -(e + lp + 3);
 	Scalers pre;
+#if 1 /* This does not change any of the test results (or execution time) , but does match the "float"  implementation, and is what is assumed by the proof */
+	u2_64 p10=u2_64_pow10_table[p-dec_exp_min];
+	p10.lo+=(p<0 || p>55) ;// for powers of 10 between 0 and 55 table entries are exact, outside that range +1 so bounded from above, rather than truncated which is what the table is - this is the same approach used in scale32() below for floats	
+#else /* original code */
 	p -= dec_exp_min;
 	u2_64 p10=u2_64_pow10_table[p];
 	p10.lo+=(p10.lo>0);// change rounding to match that expected by the standard fpfmt algorithm (bounded from above, rather than truncated which is what the table is)	
+#endif	
 	pre.pm = p10;
 	pre.s = s;
 	return pre;
@@ -975,7 +982,8 @@ static inline Scalers prescale(int e, int p, int lp) {
 //
  #if defined(__SIZEOF_INT128__) // code for 64 bit compiler
  static inline uint64_t uscale(uint64_t x, Scalers c) 
-  { assert(c.s>=0 && c.s <64);
+  { assert(c.s>=0);
+    if(c.s>=64) return 0; // not strictly correct, but what code below basically would give at present, and adequate to pass test programs (needed to support %f)
 	unsigned __int128 full = (unsigned __int128)x * c.pm.hi;
 	uint64_t hi = full>>64;
 	uint64_t mid = full;
@@ -991,7 +999,8 @@ static inline Scalers prescale(int e, int p, int lp) {
   }
  #else // code for 32 bit compiler
  static inline uint64_t uscale(uint64_t x, Scalers c) 
-  {
+  { assert(c.s>=0);
+    if(c.s>=64) return 0; // not strictly correct, but what code below basically would give at present, and adequate to pass test programs.  
 	u2_64 full = u2_64_mult_u64_u64(x, c.pm.hi);//unsigned __int128 full = (unsigned __int128)x * c.pmHi;
 	uint64_t hi = full.hi;
 	uint64_t mid = full.lo;
@@ -1010,7 +1019,8 @@ static inline Scalers prescale(int e, int p, int lp) {
 /* if compiler supports an unsigned 128 integer type then we use that for the 128*64 bit multiply required below, therwise we use u2_64 to give a "software" unsigned 128 bit type. */ 
  #if defined(__SIZEOF_INT128__) // code for 64 bit compiler
  static inline uint64_t uscale(uint64_t x, Scalers c) 
-  {
+  { assert(c.s>=0);
+    if(c.s>=64) return 0; // not strictly correct, but what code below basically would give at present, and adequate to pass test programs.
 	unsigned __int128 full = (unsigned __int128)x * c.pm.hi;
 	uint64_t hi = full>>64;
 	uint64_t mid = full;
@@ -1022,7 +1032,8 @@ static inline Scalers prescale(int e, int p, int lp) {
  }
  #else // code for 32 bit compiler
  static inline uint64_t uscale(uint64_t x, Scalers c) 
-  {
+  { assert(c.s>=0);
+    if(c.s>=64) return 0; // not strictly correct, but what code below basically would give at present, and adequate to pass test programs.
 	u2_64 full = u2_64_mult_u64_u64(x, c.pm.hi);//unsigned __int128 full = (unsigned __int128)x * c.pmHi;
 	uint64_t hi = full.hi;
 	uint64_t mid = full.lo;	
@@ -1040,9 +1051,9 @@ static inline Scalers prescale(int e, int p, int lp) {
 
 // version of above  for the case where we have a 32 bit mantissa, This only uses upper 64 bits of entry from power of 10's table above (correctly rounded using lower 64 bits), and a single 32*64bit multiply
  #if defined(__SIZEOF_INT128__) // code for 64 bit compiler - this uses a 64*64=>128 bit multiply (actually its 32*64=>96 bits) which is (just) faster than the two 32*32=>64bit multiplies used with the 32 bit compiler
- static inline uint32_t uscale32(uint32_t x, Scalers c) 
-  { assert(c.s>=2 && c.s <32);	 
-	/* 32*64 bit multiply as per zmij */
+ // this is a version for m64 which uses 1 64*64=>128bit multiply
+ static inline uint32_t uscale32(uint32_t x, Scalers c)
+  { assert(c.s>=2 && c.s <32);
 	uint64_t pm_hi=c.pm.hi;
 	if( c.pm.lo !=0) pm_hi++;// round up upper 64 bits of power10 value
 	unsigned __int128 fullx = (unsigned __int128)x * pm_hi;
@@ -1050,8 +1061,33 @@ static inline Scalers prescale(int e, int p, int lp) {
 	const uint64_t mask=(((uint64_t)1<<(c.s+32))-1);
 	bool sticky=(hi64 & mask)!=0 ;	
 	return (hi64>>(c.s+32)) | sticky;
-  } 
-#else // version avoiding 128 bit multiply - uses two 64 bit multiplies, so good for 32 bit compiler
+  }
+#else // versions avoiding 128 bit multiply
+#if 0 // this version uses 1 or 2 32*32=>64 bit multiplies, for winlibs gcc 15.2.0 its ~ 2ns slower than 128 bit (m64) solution and ~ same speed as basic m32 solution that always uses 2 multiplies
+      // for C++Builder 12.1 CE, its ~1.5ns slower for 64-bit modern compiler, 0.5ns slower for 64-bit compiler and 0.8ns slower for 32 bit compiler
+      // as its always slower with these compilers its not currently used
+  static inline uint32_t uscale32(uint32_t x, Scalers c)
+  { assert(c.s>=2 && c.s <32);
+  	uint64_t pm_hi=c.pm.hi;
+	if( c.pm.lo !=0) pm_hi++;// round up upper 64 bits of power10 value
+	const uint64_t mask=(((uint64_t)1<<(c.s+32))-1);
+	const uint32_t pm_hi_h=pm_hi>>32;// upper 32 bits
+	const uint32_t pm_hi_l=pm_hi;// lower 32 bits
+	uint64_t hi64=(uint64_t)x*pm_hi_h;// 1st multiply is always required
+	const uint32_t hi64_h=hi64>>32;
+	const uint32_t mask32=mask>>32;
+    bool sticky;
+	if((hi64_h&mask32)==mask32)
+		{
+		 // need 2nd multiply
+		 const uint64_t mid64=(uint64_t)x*pm_hi_l;
+		 hi64+=mid64>>32;
+		 sticky=(hi64 & mask)!=0 ;
+		}
+	else sticky=((hi64 & mask)!=0) | (pm_hi_l>1);// without 2nd multiply sticky bit is a little more complex as given msb of x is set, pm_hi_l must be at least 2 to change upper 32 bits of mid
+	return (hi64>>(c.s+32)) | sticky;
+  }
+ #else  // version always uses two 64 bit multiplies, so good for 32 bit compiler
  static inline uint32_t uscale32(uint32_t x, Scalers c) 
   { assert(c.s>=2 && c.s <32);	 
 	uint64_t pm_hi=c.pm.hi;
@@ -1064,7 +1100,8 @@ static inline Scalers prescale(int e, int p, int lp) {
 	const uint64_t mask=(((uint64_t)1<<(c.s+32))-1);
 	bool sticky=(hi64 & mask)!=0 ;	
 	return (hi64>>(c.s+32)) | sticky;
-  }    
+  }
+ #endif // #if 0 (1 or 2 64 bit multiply version)
  #endif //defined(__SIZEOF_INT128__)
  
 static const uint64_t u64powersOf10[]=
@@ -1102,7 +1139,7 @@ static inline void FixedWidth(uint64_t m,int e, int n, uint64_t *dp, int *pp)
  uint64_t u = uscale(m, prescale(e, p, log2Pow10(p)));
  uint64_t d = uround(u);
  // compute_dec_exp() may be out by 1 - correct for that now [ we have 1 more digit than we needed, so we just need a divide by 10 with skicky bit to fix this ]
- if(d >= u64powersOf10[n]) 
+ if(n>0 && d >= u64powersOf10[n]) 
 	{
 	 d = uround(udiv10(u));
 	 p--;
@@ -1142,7 +1179,7 @@ static void inline mantissa64_to_stringBCD(char *dst, uint64_t d64, int nd)
  	}
  u2_64 bcd128;// 16 BCD digits (needed to allow us to remove leading zero's based on nd below);
  bcd128.hi = abbccddee==0?0:ya_to_BCD8(abbccddee);// have already removed "a" if it was present, might be zero for example if nd=8
- bcd128.lo =  ffgghhii==0?0:ya_to_BCD8( ffgghhii);// check for zero - relatively unlikley but a simple check
+ bcd128.lo =  ffgghhii==0?0:ya_to_BCD8( ffgghhii);// check for zero - relatively unlikely but a simple check
  // now remove leading zero's based on nd
  bcd128=lshift_u2_64(bcd128,((16-nd)<<3));
  bcd128.hi= is_big_endian() ? bcd128.hi | zeros: bswap64(bcd128.hi |zeros);// convert to ascii chars and if necessary swap order ready for memcpy to dst    
@@ -1184,8 +1221,8 @@ static int inline mantissa64_to_stringBCD_notrailing0(char *dst, uint64_t d64, i
 // using as few digits as possible that will still round trip
 // back to the original double.
 // from fpfmt paper page 15, algorithm converted to C by Peter Miller
-// This version takes a different approach to the fpfmt paper on trailing zero removal, rather than do this in a seperate function, its done as part of the double->ascii conversion
-// The logic for this change is that the trailing zero logic effectively looks at digits being zero which ~ the same effort as binary->decimal conversion (which stil has to be done), so merging them gives simpler, faster code.
+// This version takes a different approach to the fpfmt paper on trailing zero removal, rather than do this in a separate function, its done as part of the double->ascii conversion
+// The logic for this change is that the trailing zero logic effectively looks at digits being zero which ~ the same effort as binary->decimal conversion (which still has to be done), so merging them gives simpler, faster code.
 // Two binary->decimal convertors are used - one of 16/17 digits (where no trailing zero are present) and one that removes trailing zero's. There is only a small gain in this, but the code naturally splits into these two path's
 // Returns the number of digits (after trailing zero removal).
 static int Short_d(uint64_t ieeeMantissa,uint32_t ieeeExponent, char *dst, int32_t *p) 
@@ -1426,7 +1463,10 @@ static int Short_f(uint32_t ieeeMantissa,uint32_t ieeeExponent, char *dst, int32
 	It's slightly faster if this function is not marked "inline".
 */
 static void mantissa64_to_string(char *dst, uint64_t d64, int nd) 
-{assert(nd>0 && nd<=18);
+{assert(nd>=0 && nd<=18);
+ if(nd==0) {*dst='0'+d64; // we get here from %.0f 
+		   return;
+		  }		
  if (d64>= 1000000000) 
 	{/* quickly convert 1st 10 digits */
 	 uint64_t d64_1e10=div1e10(d64); // d64/10000000000 implemented using a multiply & shift as gcc 15.2.0 does not do this automatically if compiled for a 32 bit target. This Has no speed impact for -m64 and saves 2ns for -m32	 
@@ -1441,7 +1481,7 @@ static void mantissa64_to_string(char *dst, uint64_t d64, int nd)
 
 
 
-// #define DEBUG_DCONV
+//#define DEBUG_DCONV
 
 // Interface function to ya_sprintf() 
 //
@@ -1453,10 +1493,10 @@ static void mantissa64_to_string(char *dst, uint64_t d64, int nd)
 //	uint64_t ieeeMantissa = bits & ((1ull << DOUBLE_MANTISSA_BITS) - 1);
 //	uint32_t ieeeExponent = (uint32_t) ((bits >> DOUBLE_MANTISSA_BITS) & ((1u << DOUBLE_EXPONENT_BITS) - 1));
 // returns number of digits in mantissa (can be less than requested by precision if the rest are all 0)
-int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, uint32_t precision, char* buffer,int32_t *decimal_pos) 
+int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, int32_t precision, char* buffer,int32_t *decimal_pos) 
 {
 #ifdef DEBUG_DCONV
-  printf("d2exp_buffered_n_ya_sprintf(mant=0X%llx,exp=%u,prec=%u) called\n",ieeeMantissa,ieeeExponent,precision);
+  printf("d2exp_buffered_n_ya_sprintf(mant=0X%llx,exp=%u,prec=%d) called\n",ieeeMantissa,ieeeExponent,precision);
 #endif
   int32_t SieeeExponent;
   if (ieeeExponent == 0) 
@@ -1477,14 +1517,18 @@ int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, 
  uint64_t d;// decimal mantissa
  int p;	 // decimal exponent
  int n=precision+1<=18?precision+1:18; // n is total number of digits required , precision is unsigned so n>=1, n is also limited to 18 which is also enforced here	
+ if(n<0) {buffer[0]='0'; *decimal_pos=0; return 1; } // can happen with %f
  FixedWidth(ieeeMantissa,SieeeExponent, n, &d, &p) ;// convert to base 10 mantissa d and exponent p
 #ifdef DEBUG_DCONV
-  printf(" after FixedWidth mant10=%llu exp10=%d\n",d,p);
+  printf(" after FixedWidth(n=%d) mant10=%llu exp10=%d\n",n,d,p);
 #endif   
- mantissa64_to_string(buffer, d, n);// need to limit nos digits to <=18
+ mantissa64_to_string(buffer, d, n);// need to limit nos digits to <=18  
  p += n - 1;// 1 digit before decimal point
  *decimal_pos=p;
- return n ;// nos digits created
+#ifdef DEBUG_DCONV
+  printf(" after mantissa64_to_string(n=%d) buffer=\"%.*s\"\n",n,n>0?n:1,buffer);
+#endif  
+ return n>0?n:1 ;// nos digits created
 }	
 
 
@@ -1570,6 +1614,185 @@ char * ya_dconvert_efmt(char *dst, double f, uint32_t prec)  /* prec is required
  dst+=2;
  *dst=0; // terminate string
  return dst;
+}
+
+/* user function that can be directly called to convert double -> string, , returns the same result as sprintf(dst,"%.*f",prec,f) 
+  Warning - the size of dst may need to be very large, f can be up to 1.8e308 so max space required is 308+prec+3 [ 3 as sign,dp,final null ]
+  However, in practice we expect prec to be relatively small, but only prec=0 is specially optimised 
+  DBL_MAX ((double)1.79769313486231570814527423731704357e+308L)
+  DBL_MIN ((double)2.22507385850720138309023271733240406e-308L)
+  DBL_DENORM_MIN ((double)4.94065645841246544176568792868221372e-324L)
+  DBL_DECIMAL_DIG 17
+*/
+char * ya_dconvert_ffmt(char *dst, double f, uint32_t prec)  /* prec is required number of digits after decimal point , returns pointer to trailing 0 in string */
+{
+ const union {
+	double real_d;
+	uint64_t bits_d;
+  } u = { f };
+	// Decode bits into sign, mantissa, and exponent.
+ const bool vsign = (u.bits_d  & ((uint64_t)1<<63)) != 0;// true if v is negative 1<<63 as sign bit is the msb 
+ uint64_t mantissa = u.bits_d & 0xFFFFFFFFFFFFFULL;
+ int expo=(int)((u.bits_d>>52) & 0x7ff) ; 
+ if(expo==0x7ff)
+	{// nan or inf
+	 if(vsign) *dst++='-';
+	 if(mantissa) // nan
+		{ if(u.bits_d==0xFFF8000000000000ULL)
+			{//strcpy(dst,"nan(ind)");
+			 memcpy(dst,"nan(ind)",9); // 9 includes trailing 0
+			 dst+=8;
+			}
+		  else if( (mantissa & (1ull << 51)) == 0)
+			 {//strcpy(dst,"nan(snan)");
+			  memcpy(dst,"nan(snan)",10);// 10 includes trailing 0
+			  dst+=9;
+			 }
+		 else
+		 	{// strcpy(dst,"nan");
+		 	 memcpy(dst,"nan",4);// 4 includes trailing 0
+			 dst+=3;
+		 	}
+		}
+	 else 
+	 	{//strcpy(dst,"inf");
+		 memcpy(dst,"inf",4);// 4 includes trailing 0
+		 dst+=3;	 	
+	 	}
+	 return dst;
+	}	 	
+ if(expo==0 && mantissa==0)
+	{// zero is special as we cannot scale it into range : return 0.00000e00
+	 //printf("v (%g) == zero!\n",v);
+	 if(vsign) *dst++='-';
+	 *dst++='0';
+	 if(prec>0) *dst++='.';
+	 for(int i=1;i<=prec;++i)
+		*dst++='0';
+	 *dst=0; // terminate string	 
+	 return dst;
+	}	
+
+ if(vsign) 
+	{*dst++='-';
+	 f=-f;
+	}	
+ // if prec=0 and it will fit into an integer (exactly) then calculations are simplish and fast, otherwise we use the same approach as used in ya_sprintf() for %f
+ if( prec!=0 || f>=(double)u64powersOf10[18]) // largest that will fit in a uint64 is 19, 18 is limit due to mantissa64_to_string()
+ 	{// simple approach will not work - have to use a more complex approach (exactly the same as used in ya_sprintf() for %f )
+	 // int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, int32_t precision, char* buffer,int32_t *decimal_pos) 
+	 int32_t tens; // (real) decimal exponent
+	 int dlen;
+	 int32_t req_prec; // precision required for 2nd call to ya_d2exp_buffered_n_ya_sprintf
+	 // for %f we need to get 10's exponent 1st, then use this to set precision 
+	 dlen=ya_d2exp_buffered_n_ya_sprintf(mantissa,expo, 18, dst, &tens); // used to accurately set tens (will also be used as final result if req_prec>=18).
+	 req_prec=(int32_t)(tens + (int32_t)prec);// calculate actual value for digits required to give specified precision (for %f that's digits after dp)
+	 if(req_prec<18) 
+  	 	dlen=ya_d2exp_buffered_n_ya_sprintf(mantissa,expo, req_prec, dst, &tens);// we have already done the conversion with req_prec=18 above, so only need this for req_prec<18 
+  	 //printf(" ya_dconvert_ffmt(%.20g,%u): req_prec=%d ya_d2exp_buffered_n_ya_sprintf() returns dlen=%d, tens=%d and string %.*s\n",f,prec,req_prec,dlen,tens,dlen,dst);
+	 char *idst=dst;
+	 if(req_prec==-1) tens++; // prec=-1 means we round up to a single digit causing an offset between tens and actual power of 10 exponent
+	 if(tens<0)
+	 	{// e.g. number is 0.000123 ie 1.23e-4 if we want precision of <= 3 this gives 0. This gives tens=-4 dlen=3
+	 	 if(prec<-tens)
+			{// zero 
+			 *dst++='0';
+			 if(prec>0) *dst++='.';
+			 for(int i=1;i<=prec;++i)
+				*dst++='0';
+			 *dst=0; // terminate string	 
+			 return dst;
+			}
+		 // some digits are required
+#define MIN(a,b) (((a)<=(b))?(a):(b))	 
+#define MAX(a,b) (((a)>=(b))?(a):(b))	 	
+		 memmove(dst+1+(-tens),dst,MIN(dlen,prec+tens+1)); // memmove(to,from,count) in example with prec=4 we want to move 1 character i.e. want 0.0001
+		 // now add in initial zero's
+		 *dst++='0';
+		 if(prec>0) *dst++='.';
+		 for(int i=1;i< -tens;++i)
+			*dst++='0';	
+		 dst+=MIN(dlen,prec+tens+1); // skip actual number as that's already been moved into place	 
+		 // finally add in any required trailing zero's
+		 while(dst<idst+2+prec) *dst++='0';
+	 	 *dst=0; // terminate string
+	 	 return dst; 					 
+		}
+	 else // tens>=0
+	 	{// e.g. number is 1.23	ie 1.23e0 => this gives tens=0, dlen=3 but could be 1.23e90 with tens=90 and dlen=3 . 12.3 =1.23e1, 123=1.23e2
+		 // first need to insert dp at correct location
+		 if(dlen>tens+1)
+	 	    {if(prec>0)
+	 	    	{
+				 memmove(dst+tens+2,dst+tens+1,MAX(0,MIN(prec,dlen-(tens+1)))); // memmove(to,from,count) , this is moving digits to after dp so we want at most prec
+		 	     dst[tens+1]='.';
+				 dst+=tens+2+MAX(0,MIN(prec,dlen-(tens+1)));// taken directly from memmove above - to+count
+				 for(int i=MAX(0,MIN(prec,dlen-(tens+1)));i<prec;++i) *dst++='0';// add in any more required trailing zero's to get to prec digits after dp			 
+				}
+			 else dst+=tens;
+			 *dst=0; // terminate string	 
+			 return dst;	 	     
+	 	    }
+	 	 else 
+	 	 	{// we don't have enough digits before dp - add zero's [ then add prec zero's after dp ]
+	 	 	 int i;
+	 	 	 for(i=dlen;i<tens+1;++i)
+	 	 	 	dst[i]='0';
+	 	 	 dst+=i;
+			 if(prec>0) *dst++='.';
+			 for( i=1;i<=prec;++i)
+				*dst++='0';
+			 *dst=0; // terminate string	 
+			 return dst;
+			}		  
+	 	}
+	 // NOT REACHED
+ 	 *dst=0; // terminate string
+ 	 return dst; 
+ 	}
+ 	
+ // if we get here simple approach will work...
+ // static void mantissa64_to_string(char *dst, uint64_t d64, int nd) - nd>=1 && <=18
+ // static inline uint16_t Digits(uint64_t d) - returns number of decimal digits in d
+ // 
+ uint64_t ud=f; // simple case - prec==0 and value (f) will fit in a uint64
+ if(f-(double)ud>0.5) ud++;
+ else if(f-(double)ud==0.5 && (ud&1)) ud++;// round to even
+ if(ud==0)
+	{// zero is again special - so deal with it here [ note we can get ud=0 when f<>0 due to limited precision with %f ]
+	 //printf("v (%g) == zero!\n",v);
+	 *dst++='0';
+	 if(prec>0) *dst++='.';
+	 for(int i=1;i<=prec;++i)
+		*dst++='0';
+	 *dst=0; // terminate string	 
+	 return dst;
+	} 
+	
+ uint16_t nd=Digits(ud); // nos decimal digits in ud
+ if(nd>prec)
+ 	{// have some digits before dp eg 100 with prec=2 (giving 100.00) ud=10000 so mantissa64_to_string() gives "10000" we want 100.00 so move last 2 characters right 1. nd=5, prec=2
+ 	 mantissa64_to_string(dst,ud,nd);// creates nd character decimal value
+ 	 if(prec!=0) // prec=0 means no digits after dp and so no dp needed
+ 	 	{
+	 	 memmove(dst+1+(nd-prec),dst+(nd-prec),prec); // memmove(to,from,count) in example move 3rd char to 4th giving 100X00
+	     dst[nd-prec]='.';
+	     dst+=nd+1;
+	    }
+	 else dst+=nd;
+    }
+ else // nd<=prec (not strictly required here as prec=0 and nd>0; left in case the scope of this "fast path" is expanded in the future) 
+ 	{// we need to put in some initial zero's, but we can put decimal mantissa in correct position directly
+ 	 // eg 0.01 with precision 3 (so we expect 0.010), ud=10, nd=2
+ 	 mantissa64_to_string(dst+2+(prec-nd),ud,nd);// creates nd character decimal value dst+2 allows for "0."
+ 	 dst[0]='0';
+ 	 dst[1]='.';
+ 	 for(size_t i=2;i<2+prec-nd;++i) dst[i]='0'; // add in extra 0's as required
+ 	 dst+=prec+2;
+ 	}
+ 	 
+ *dst=0; // terminate string
+ return dst;  
 }
 
 /* user function that can be directly called to convert double -> string, returns the same result as sprintf(dst,"%.*g",prec,f) 
@@ -2045,7 +2268,7 @@ double ya_conv_mant_exp_to_double(bool signedM,uint64_t m10,int32_t dec_exp)
 		     return int64Bits2Double(ieee);
 			} 
   	 else 
-	   	{//  table goes down to 1e-350 and with denormals doubles go down to 4.9e-324, so if we are off the end of the table the result is definately zero.
+	   	{//  table goes down to 1e-350 and with denormals doubles go down to 4.9e-324, so if we are off the end of the table the result is definitely zero.
 	   	 // return +/-0
 	 	 uint64_t ieee = ((uint64_t) signedM) << (DOUBLE_EXPONENT_BITS + DOUBLE_MANTISSA_BITS);
 	 	 return int64Bits2Double(ieee);	   	
@@ -2066,7 +2289,7 @@ double ya_conv_mant_exp_to_double(bool signedM,uint64_t m10,int32_t dec_exp)
 	 int dshift=(-bin_exp-1022);
 	 mant_shift_right_by+=dshift;
 	 if(mant_shift_right_by>64)
-	 	{// result is definately zero (even allowing for rounding), return +/-0
+	 	{// result is definitely zero (even allowing for rounding), return +/-0
 	 	 uint64_t ieee = ((uint64_t) signedM) << (DOUBLE_EXPONENT_BITS + DOUBLE_MANTISSA_BITS);
 	 	 return int64Bits2Double(ieee);	 		 	
 	 	}

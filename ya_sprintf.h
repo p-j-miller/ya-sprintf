@@ -360,9 +360,6 @@ Note YA_SP_SPRINTF_LD  is not used in this version - long doubles are always sup
 #endif
 
 
-#include "../u2_64-128bits-with-two-u64/u2_64.h" // needed to get 128 bit int functions 
-
-
 #ifdef YA_SP_SPRINTF_STATIC
 #define YA_S__PUBLICDEC static
 #define YA_S__PUBLICDEF static 
@@ -384,7 +381,11 @@ Note YA_SP_SPRINTF_LD  is not used in this version - long doubles are always sup
 #if defined(__SIZEOF_FLOAT128__) && defined(YA_SP_SPRINTF_QF ) && !defined(__BORLANDC__) /* if compiler supports __float128  and support for this is requested YA_SP_SPRINTF_QF */
  #include <quadmath.h> /* see https://gcc.gnu.org/onlinedocs/libquadmath/index.html#SEC_Contents - also needs quadmath library linking in */
 #endif
-#include "ya-dconvert.h"
+
+#ifdef YA_SP_SPRINTF_IMPLEMENTATION /* This tells the compiler to compile the code in the header file ya_sprintf.h */
+ #include "../u2_64-128bits-with-two-u64/u2_64.h" // needed to get 128 bit int functions 
+ #include "ya-dconvert.h"
+#endif
 
 #ifndef YA_SP_SPRINTF_MIN
 #define YA_SP_SPRINTF_MIN 512 // how many characters per callback
@@ -739,9 +740,21 @@ YA_S__PUBLICDEF int YA_SP_SPRINTF_DECORATE(vsprintfcb)(YA_S_SPRINTFCB *callback,
                f++;
             }
          }
+#if 0         
         // deal with invalid combinations
+        /* C99 to C23 state for flags:
+        0 	For b, B, d, i, o, u, x, X, a, A, e, E, f, F, g, and G conversions, leading zeros (following any
+			indication of sign or base) are used to pad to the field width rather than performing space
+			padding, except when converting an infinity or NaN. If the 0 and - flags both appear, the 0
+			flag is ignored. For b, B, d, i, o, u, x, and X conversions, if a precision is specified, the 0 flag is
+			ignored. 
+			For other conversions, the behavior is undefined.
+			
+		 Note that the UCRT printf does allow the use of the 0 flag with floating point values - and it behaves as expected adding leading zero's to pad the field width, so from ya-sprint 2v4 the following if is now disabled by a #if 0 above to allow the zero flag and a precision to be used
+		*/
         if((fl & YA_S__LEADINGZERO) && pr != -1 ) 
           fl &= ~YA_S__LEADINGZERO; // cannot have 0 flag when precision specified
+#endif          
       }
 
       // handle integer and double size overrides
@@ -827,6 +840,24 @@ YA_S__PUBLICDEF int YA_SP_SPRINTF_DECORATE(vsprintfcb)(YA_S_SPRINTFCB *callback,
 	  bool is_LD; /* set true for long double arguments */
 	  is_LD=false;  
 	  char *s="";
+#if 1         
+        // deal with invalid combinations
+        /* C99 to C23 state for flags:
+        0 	For b, B, d, i, o, u, x, X, a, A, e, E, f, F, g, and G conversions, leading zeros (following any
+			indication of sign or base) are used to pad to the field width rather than performing space
+			padding, except when converting an infinity or NaN. If the 0 and - flags both appear, the 0
+			flag is ignored. 
+			For b, B, d, i, o, u, x, and X conversions, if a precision is specified, the 0 flag is
+			ignored. For other conversions, the behavior is undefined.
+			
+		 Note that the UCRT printf does allow the use of the 0 flag and a precision with floating point values - and it behaves as expected adding leading zero's to pad the field width,
+		 so from ya-sprint 2v4 it is possible to use the zero flag and a precision with %a,A,e,E,f,F,g,G conversions
+		*/
+		{char cf=*f | 0x20;// conversion character, or with 0x20 converts upper case->lower case
+         if((fl & YA_S__LEADINGZERO) && pr != -1 && !(cf=='a' || cf=='e' || cf=='f' || cf=='g' ) ) 
+          fl &= ~YA_S__LEADINGZERO; // cannot have 0 flag when precision specified
+        }
+#endif 	  
       // handle each replacement
       switch (f[0]) {  
 		 #define YA_S__NUMSZ 20000 // clipped to 350 digits after decimal point and could have 4932 before plus commas...         
@@ -1884,7 +1915,8 @@ a_pr_axp:
             	fl |= YA_S__NEGATIVE;
 #pragma GCC diagnostic pop
             }
-           
+		 // static bool ya_s__DD_to_str(char const **start, uint32_t *len, char *out, int32_t *decimal_pos, double v, uint32_t frac_digits)
+         // printf("printf %%f(%.20g): isQ=%d isLD=%d out=%.*s dp=%d\n",fv,(fl & YA_S__Q && isf128),(fl & YA_S__L && is_LD),l,num,dp ); 
       dofloatfromg:
          tail[0] = 0;
          ya_s__lead_sign(fl, lead);
@@ -2388,7 +2420,7 @@ a_pr_axp:
             fw = n;
          fw -= n;
          pr -= l;
-
+         // printf("fw=%d pr=%d fl=0x%x  YA_S__LEFTJUST=%s YA_S__LEADINGZERO=%s YA_S__TRIPLET_COMMA=%s\n",fw,pr,fl,((fl & YA_S__LEFTJUST)?"True":"False"),((fl & YA_S__LEADINGZERO)?"True":"False"),((fl & YA_S__TRIPLET_COMMA)?"True":"False"));
          // handle right justify and leading zeros
          if ((fl & YA_S__LEFTJUST) == 0) {
             if (fl & YA_S__LEADINGZERO) // if leading zeros, everything is in pr
@@ -2401,12 +2433,13 @@ a_pr_axp:
          }
 
          // copy the spaces and/or zeros
+
          if (fw + pr) {
             int32_t i;
             uint32_t c;
 
             // copy leading spaces (or when doing %8.4d stuff)
-            if ((fl & YA_S__LEFTJUST) == 0)
+            if ((fl & YA_S__LEFTJUST) == 0 )
                while (fw > 0) {
                   ya_s__cb_buf_clamp(i, fw);
                   fw -= i;
@@ -2810,40 +2843,21 @@ static bool ya_s__DD_to_str(char const **start, uint32_t *len, char *out, int32_
   // frac_digits is absolute normally, but if you want from first significant digits (got %g and %e), or in 0x80000000
   if( (frac_digits & 0x80000000)==0)
   	{// %f format - we need to know 10's exponent to fix decimal point 
-  	 int32_t tens=expo-1022;// convert to a "proper" (2^x) signed exponent (tens will eventually be 10^x exponent)
-	 if(tens==-1022)
-	 	{// find correct exponent for denormalised numbers
-	 	 tens+=12-ya_clz(mantissa);
-	 	}
-	 // log10 estimate 
-	 tens=(tens <= 0) ? (((tens * 78913) / 262144)-1) : (((tens * 78913) / 262144) ); //  78913/2^18=0.301029205322265625 (2^18= 262,144), log10(2)=0.30102999566398119521373889472449
-	 digits=(int32_t)(tens + (int32_t)frac_digits); 
-  	 if(digits>18) digits=18; // 18 is a sensible limit (any other value gives part 2 errors) - this must be limited - the "main code" will add extra zero's if the user asks for something "silly".
-  	 if(digits<0) digits=0;	   	 
-  	 *len=d2exp_buffered_n_ya_sprintf(mantissa,expo, digits, out, &dec_exp);// 1st call , 86% of the time will be correct (on test program), the remainder takes a 2nd attempt
-  	 // printf("tens=%d dec_exp=%d\n",tens,dec_exp);
-  	 if(tens!=dec_exp) 
-	   	{
- #ifdef MONITOR_POWER10_ACCURACY	   	
-		 nos_10_wrong++;
- #endif
-		 digits=(int32_t)(dec_exp + (int32_t)frac_digits);// 2nd attempt - this should always work - needed ~ 14% of the time
-		 if(digits>18) digits=18; // 18 is a sensible limit (any other value gives part 2 errors) - this must be limited - the "main code" will add extra zero's if the user asks for something "silly".
-  	 	 if(digits<0) digits=0;	 
-  	 	 *len=d2exp_buffered_n_ya_sprintf(mantissa,expo, digits, out, &dec_exp);
-  	 	}
-#ifdef MONITOR_POWER10_ACCURACY  	 	
-  	 else nos_10_correct++;
-#endif  	 
+	 // for %f we need to get 10's exponent 1st, then use this to set precision 
+	 *len=d2exp_buffered_n_ya_sprintf(mantissa,expo, 18, out, &dec_exp); // used to accurately set dec_exp (may also be used as final result if digits>=18.
+	 digits=(int32_t)(dec_exp + (int32_t)frac_digits);// calculate actual value for digits required to give specified precision (for %f that's digits after dp)
+	 if(digits>=18) digits=18; // 18 is a sensible limit (any other value gives part 2 errors) - this must be limited - the "main code" will add extra zero's if the user asks for something "silly". 
+  	 else *len=d2exp_buffered_n_ya_sprintf(mantissa,expo, digits, out, &dec_exp);// we have already done the conversion with digits==18 above, so only need this for digits<18
   	}
   else 
   	{digits=(int32_t)(frac_digits & 0x7ffffff);
   	 if(digits>18) digits=18; // 18 is a sensible limit (any other value gives part 2 errors) - this must be limited - the "main code" will add extra zero's if the user asks for something "silly".
-  	 if(digits<0) digits=0;
+  	 if(digits<0) digits=0;		 
   	 // int d2exp_buffered_n_ya_sprintf(double d, uint32_t precision, char* result,int32_t *decimal_pos);
   	 *len=d2exp_buffered_n_ya_sprintf(mantissa,expo, digits, out, &dec_exp);
   	}
   // we don't print the exponent here, so we can just return at this point
+   if(digits==-1) dec_exp++; // prec=-1 means we round up to a single digit causing an offset between tens and actual power of 10 exponent
    *decimal_pos = dec_exp+1;// based on .xxx not x.xxx
    *start = out;
    return ng;  
@@ -2975,10 +2989,22 @@ static bool ya_s__real128_to_str(char const **start, uint32_t *len, char *out, i
 		 	{ 
 			  if(d==5)
 			  	{
+#if 1		
+				 for(int i=digits+2;i<=37;++i) // must be at least i<37, i<=37 also passes test program, i<=38 fails with 3 errors
+				 	{// create extra digits - if they one is non-zero stop (if all are zero its exactly 0.5, if one is non-zero its >0.5) 
+				 	 m.hi&=M_MASK; // mask out d
+			 		 m=umul_u2_64_by_ten(m); //  and multiply by 10
+			 		 d=m.hi>>(ya_M_SHFT-64); // no point in shifting the other 64 bits and using m.lo  
+			 		 if(d!=0) break;
+			 		}
+				 if(d!=0) roundup=true; // >5
+			     else if(lastd & 1) roundup=true; // exactly 5, round to even			 		
+#else // code for 2v3 and earlier	  	
 				 m.hi&=M_MASK; // mask out d
 				 m=umul_u2_64_by_ten(m); //  and multiply by 10 to get remainder
 				 if((m.hi|m.lo)!=0) roundup=true; // >5
 			     else if(lastd & 1) roundup=true; // exactly 5, round to even	     
+#endif			     
 		 		}
 		 	}
 		}   
@@ -3101,12 +3127,14 @@ static bool ya_s__LD_to_str(char const **start, uint32_t *len, char *out, int32_
 		 /* rounded - based on required digits - this works , passing the test program */ 
 		 if(xl<0.0L)
 		 	{
-		 	 ml= ld_to_u2_64(ldexpl(-xl, ya_M_SHFT )+0.55L); // xl -ve, so result is positive. Constant can be +0.4 to +0.7   Midpoint (0.55) used.
+		 	 digits =(int32_t) ((frac_digits & 0x80000000) ? (int32_t)(frac_digits & 0x7ffffff) : (int32_t)(tens + (int32_t)frac_digits)); // digits is signed
+		 	 if(digits<8) ml= ld_to_u2_64(ldexpl(-xl, ya_M_SHFT )+0.5L); // xl -ve, so result is positive. Constant can be +0.4 to +0.6   Midpoint (0.5) used.
+		 	 else ml= ld_to_u2_64(ldexpl(-xl, ya_M_SHFT )/*+0.0L*/); // +0 gives errors at low digits, but is good for higher values 
 		 	 ml= not_u2_64(ml); // 2's comp = 1's comp+1
 		 	 ml= uadd_u2_64(ml,u64_to_u2_64(0,1));
 		 	}
 		 else 
-		 	{ ml= ld_to_u2_64(ldexpl(xl, ya_M_SHFT )+1.0L);/* +ve values are easy ! any value >0.9 seems to work for test program (to at least 256) set to 1.0 */	
+		 	{ ml= ld_to_u2_64(ldexpl(xl, ya_M_SHFT )+0.9L);/* +ve values 0.9 seems to work best for test program (0.8 & 1.0 are worse) */	
 			} 
 		 //my_printf(" digits=%d xh=%Lg xl=%Lg\n",digits,xh,xl);
 		 //printf("before exponent removal m= 0X%016"PRIx64"%016"PRIx64" ml=0X%016"PRIx64"%016"PRIx64"\n",m.hi,m.lo,ml.hi,ml.lo);
@@ -3159,10 +3187,22 @@ static bool ya_s__LD_to_str(char const **start, uint32_t *len, char *out, int32_
 		 	{ 
 			  if(d==5)
 			  	{
+#if 1		
+				 for(int i=digits+2;i<=22;++i) // digits+2 as we have already created digits+1, expect zero round the loop errors for >=21 sig figs for LD's <=21,22,23 give zero errors with test program - use 22
+				 	{// create extra digits - if they one is non-zero stop (if all are zero its exactly 0.5, if one is non-zero its >0.5) 
+				 	 m.hi&=M_MASK; // mask out d
+			 		 m=umul_u2_64_by_ten(m); //  and multiply by 10
+			 		 d=m.hi>>(ya_M_SHFT-64); // no point in shifting the other 64 bits and using m.lo  
+			 		 if(d!=0) break;
+			 		}
+				 if(d!=0) roundup=true; // >5
+			     else if(lastd & 1) roundup=true; // exactly 5, round to even			 		
+#else // code for 2v3 and earlier				  	
 				 m.hi&=M_MASK; // mask out d
 				 m=umul_u2_64_by_ten(m); //  and multiply by 10 to get remainder
 				 if((m.hi|m.lo)!=0) roundup=true; // >5
-			     else if(lastd & 1) roundup=true; // exactly 5, round to even	     
+			     else if(lastd & 1) roundup=true; // exactly 5, round to even	   
+#endif				   
 		 		}
 		 	}
 		}   

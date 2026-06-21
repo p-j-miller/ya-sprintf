@@ -48,19 +48,16 @@
 	 // the 1st 2 emulate functionality in sprintf() - but are significantly faster as sprintf() needs to parse the format string and extract the precision
 	 // the two ya_short functions provide functionality not available in sprintf(), which is especially useful when writing numerical data to a file in text format, as writing fewer characters is both faster and gives a smaller file size.
 	 // ya_shortf() also works directly on floats which also gives it a significant speed advantage.
-	 char *ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - this is equivalent to (but faster than) sprintf(dst,"%.*e",prec,f) */
-	 char *ya_dconvert_gfmt(char *dst, double f, int32_t prec);  /* prec is required number of digits - this is equivalent to (but faster than) sprintf(dst,"%.*g",prec,f) . prec of <0 gives default (6)   */
-
-	 // 31/3/2026 Peter Miller added fpfmt short algorithm to convert double->ascii giving the smallest number of characters while remaining round-loop exact
-	 char *ya_shortd(char *dst, double f) ;
-	 
-	 // 31/3/2026 Peter Miller added fpfmt short algorithm to convert float->ascii giving the smallest number of characters while remaining round-loop exact
-	 char *ya_shortf(char *dst, float f) ;
+	char *ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*e",prec,f). dst must have space for at least 9+prec characters*/
+	char *ya_dconvert_ffmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*f",prec,f). dst must have space for at least 308+prec+3 characters if f is DBL_MAX (1.8e308) */
+	char *ya_dconvert_gfmt(char *dst, double f, int32_t prec) ; /* prec is required total number of mantissa digits (prec<0 gives default = 6) - emulates sprintf(dst,"%.*g",prec,f). dst must have space for at least 8+prec characters */
+	char *ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
+	char *ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
 	 
 	 // "support functions" 
 
 	 // 19/2/2026 Peter Miller interface to ya_sprintf()
-	 int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, uint32_t precision, char* buffer,int32_t *decimal_pos) ;
+	 int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, int32_t precision, char* buffer,int32_t *decimal_pos) ;
 
 	 // 27/2/2026 added interface for fast_strtod()
 	 double ya_conv_mant_exp_to_double(bool signedM,uint64_t m10,int32_t dec_exp); // returns m10*1o^dec_exp as a double	 
@@ -195,13 +192,19 @@
 	 static inline uint64_t bswap64(uint64_t x) 
 	 {
 	 #if defined(__has_builtin) && __has_builtin(__builtin_bswap64) /*  is builtin for gcc and clang */
-	  #pragma message( "bswap64() using __builtin_bswap64")
+	  #ifndef NDEBUG
+	   #pragma message( "bswap64() using __builtin_bswap64")
+	  #endif
 	  return __builtin_bswap64(x);
 	 #elif defined(__MSVCRT__)
-	  #pragma message( "bswap64() using _byteswap_uint64")
+	  #ifndef NDEBUG
+	   #pragma message( "bswap64() using _byteswap_uint64")
+	  #endif
 	  return _byteswap_uint64(x); // in msvcrt.dll
 	 #else /* portable C solution */
-	  #pragma message( "bswap64() using C version")
+	  #ifndef NDEBUG
+	   #pragma message( "bswap64() using C version")
+	  #endif
 	  return ((x & 0xff00000000000000) >> 56) | ((x & 0x00ff000000000000) >> 40) |
 			 ((x & 0x0000ff0000000000) >> 24) | ((x & 0x000000ff00000000) >> +8) |
 			 ((x & 0x00000000ff000000) << +8) | ((x & 0x0000000000ff0000) << 24) |
@@ -216,27 +219,37 @@
 	{ /* returns the number of leading zero's in x , x must be >0 */
 	  assert(x != 0);
 	#if defined(__has_builtin) && __has_builtin(__builtin_clzll) /*  is builtin for gcc and clang */
-	#pragma message( "ya_clz() using __builtin_clzll()")
+	 #ifndef NDEBUG
+	  #pragma message( "ya_clz() using __builtin_clzll()")
+	 #endif
 	  return __builtin_clzll(x);
 	#elif defined(_M_AMD64) && defined(__AVX2__) && !defined(__BORLANDC__)
 	  // Use lzcnt only on AVX2-capable CPUs that have this BMI instruction.
-	  #pragma message( "ya_clz() using __lzcnt64()")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_clz() using __lzcnt64()")
+	  #endif
 	  return __lzcnt64(x);
 	#elif defined(_M_AMD64) || defined(_M_ARM64)
-	 #pragma message( "ya_clz() using _BitScanReverse64()")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_clz() using _BitScanReverse64()")
+	  #endif
 	  unsigned long idx;
 	  _BitScanReverse64(&idx, x);  // Fallback to the BSR instruction.
 	  return 63 - idx;
 	#elif _M_IX86
 	  // Fallback to the 32-bit BSR instruction. 
-	  #pragma message( "ya_clz() using _BitScanReverse()")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_clz() using _BitScanReverse()")
+	  #endif
 	  unsigned long idx;
 	  if (_BitScanReverse(&idx, (uint32_t)(x >> 32))) return 31 - idx;
 	  _BitScanReverse(&idx, (uint32_t)(x));
 	  return 63 - idx;
 	#else /* portable C - both Winlibs/gcc-64 and Borland/clang have __builtin_clzll() , but this is faster than falling back to the 32-bit BSR above - so this is used for 32 bit Intel at least */
 	  // based on hackers-delight nlz2 expanded to 64 bits, and optimised by PMi 
-	  #pragma message( "ya_clz() using C code")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_clz() using C code")
+	  #endif
 	  uint32_t y,z=x;
 	  int32_t n=64;
 	  y = x >>32;  if (y != 0) {n = n -32;  z = y;}
@@ -251,7 +264,9 @@
  #else /* this version in portable C - based on hackers-delight nlz2 expanded to 64 bits by PMi */
 	/* https://godbolt.org/#z:OYLghAFBqd5QCxAYwPYBMCmBRdBLAF1QCcAaPECAMzwBtMA7AQwFtMQByARg9KtQYEAysib0QXACx8BBAKoBnTAAUAHpwAMvAFYTStJg1DIApACYAQuYukl9ZATwDKjdAGFUtAK4sGEgKykrgAyeAyYAHI%2BAEaYxCCBAA6oCoRODB7evgGkyamOAqHhUSyx8YF2mA7pQgRMxASZPn5cFZj2BQy19QRFkTFxCbZ1DU3ZrcM9fSVlCQCUtqhexMjsHOYAzGHI3lgA1CYbbgoE%2BIIAdAiH2Hu3APR3e15hBABskgD6BCYaAIKb212mAORxOxDCwEu11ueweezYLGQiQAnj9fi89simB8dgAvCDPQTvL57VRzA5/H4AThMAHYLLCAFR7YiYAjLBgKPYEBDAhgDYh7VBUPb0JhnYB7XFxVBgDhcsKk26Mu5o6kAkVcWGPBi0XFmNEwwkEDZmEnI0i4w4AEVUhysfxhL1NJIY9rVjtuDBB1r273dnsxPqV12upvttzwIogyL2YDANr2GnJdIs3sT3oAtOGNgypcHUbm6dbDbdY4ncSDsNcuK8I3so3sY3GExtfcmDvT0229lna/XK4nC1ZaSXA%2BWe4ONtXp3sABz1xvN%2BOJjup7u%2BrPzgcF92j0tBitV6GSRfR2MrntrrvBren3O3Ke%2B4fFg8T31Tmc3A0PhvnlurimN4ZnsmZ7D%2BeZPpie5jr8MLvvmoazlwZ5NherbtuSrLssQ3pbhBB7YRyvagVKAb/BoNJmBs7RKNqvZ6ihlKUU6gi9jaOYOhRVJOtGqhVk2xrEgQcwaKoGgSZJEkAGKyXJslAWmwYaBG/GJmp05hgR%2B7MTxkZ8SCbiruJknyYpG4kdY/YPhpvoaUZRzWSOsHUrxTb2cZMnydJ5m3gcljbjZwYeUcgXOR6el/u5hmed5CmdkpIHWHs94MrZIZHIcbgpTBEVuRAIXtqoGxxT5CUWemAUQRldkxaF2kuSx%2BnRVlxm0qVvlJQFKFFjp3EwkRuHsUWumbK4UYRcWHALLQnD%2BLwfgcFopCoJwRmWMlChLCswKbDwpAEJo00LAA1iAGwbOcF3XTdt36JwkgLUdK2cLwCggBoB1HQscCwEgaAsIkdBxOQlAA0D9DxMArRmHwdAEHE70QNEz3RGE9TIpw%2B1o8wxDIgA8tE2hVId3C8ADbCCPjuqY0tvBYNEXjAG4Yi0O9ZOkFgLCGMA4h05zeCstUABumDs8tmCqFUXgI1jvAvO0z20Hg0TEBjHhYM9BDgiwcukKLxDRCkmDWpg3NGMrRjfXwBjAAoABqeCYAA7vjiSMHr/CCCIYjsFIMiCIoKjqPzuhcPoPMoNY1j6Cr72QAsqCJJ07OZvjGy8KgBvglg8cQAslTVM4ECuGMLRBAw6DTAKeh5GkAhl7XKT1ww1elIM4eF503SjJ4zR6F3NQjL0YT9O38Sd8PjeT1Mo8zB3BfbasEgzXNT386tHCknOryZu8ezAMgyB7K05xmE2uCECQ/kbFwcy8KTWhzKd52Xbd7/XfdHCPaQi3LZvb0PpfTpj9GAiAUCoEBsDMgFAIDg2gSAFgEJnbEi8MgBoHxD7IA%2BDDT6NBaAI2IEjFG/McYYz1mQvGhNiYOD1hTRgBBqa0FpstBmTMWa0DZnrLmPM%2BasMFiTPAotxa8EltLWWHMFazX5srVW6sMBrGWtrPAusOYGyNkoU25teYQmtlQW2Dsnau3dotfaXthCiHEP7cxQc1DPV0LDAwVtTAbUsLHaIedE7J3SKndOoEWCmkztnPAud4AF3aII4upc%2B7jArlXOeNdw5106NPXIzdOht1mJ3CJRcuhTxieXQeAge4j2KIkyYvcsiFOHpkheixljLzvl/eav9nqbz2AAWTCAAcQAOoHyPiffwZ9zgaAvvgIggo9r32AU/F%2BF0rof3fl/H%2Bf9M6vVsEAx%2Bx0v5mF4LrLgElWkbw2ds5%2B%2BtEbpBAJIIAA%3D   */
 	/* code optimised to give good performance for both w64 and w32 - both only have 1 branch with gcc 15.2.0 ! */
-	#pragma message( "ya_clz() using C code [forced]")
+	#ifndef NDEBUG
+	 #pragma message( "ya_clz() using C code [forced]")
+	#endif
 	static inline int ya_clz(uint64_t x) 
 	{ /* returns the number of leading zero's in x  */
 	  // based on hackers-delight nlz2 expanded to 64 bits by PMi 
@@ -272,16 +287,22 @@
 	{ /* returns the number of leading zero's in x , x must be >0 */
 	  assert(x != 0);
 	#if defined(__has_builtin) && __has_builtin(__builtin_clz) /*  is builtin for gcc and clang */
-	  #pragma message( "ya_clz32() using __builtin_clz(x)")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_clz32() using __builtin_clz(x)")
+	  #endif
 	  return __builtin_clz(x);
 	#elif defined(_M_AMD64) || defined(_M_ARM64) || defined(_M_IX86) 
-	 #pragma message( "ya_clz32() using _BitScanReverse(x)")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_clz32() using _BitScanReverse(x)")
+	  #endif
 	  unsigned long idx;
 	  _BitScanReverse(&idx, x);  // Fallback to the BSR instruction.
 	  return 31 - idx;
 	#else /* portable C - both Winlibs/gcc-64 and Borland/clang have __builtin_clz() */
 	  // based on hackers-delight nlz2 
-	  #pragma message( "ya_clz32() using C code")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_clz32() using C code")
+	  #endif
      uint32_t y;
      int32_t n=32;
      y = x >>16;  if (y != 0) {n = n -16;  x = y;}
@@ -293,7 +314,9 @@
 	#endif
 	}
  #else /* this version in portable C - based on hackers-delight nlz2  - only slightly slower than __builtin_clz() ! */
-	#pragma message( "ya_clz32() using C code [forced]")
+	#ifndef NDEBUG
+	 #pragma message( "ya_clz32() using C code [forced]")
+	#endif
 	static inline int ya_clz32(uint32_t x) 
 	{ /* returns the number of leading zero's in x  */
 	  // based on hackers-delight nlz2 
@@ -313,24 +336,34 @@
 	{ /* returns the number of trailing zero's in x , x must be >0 */
 	  assert(x != 0);
 	#if defined(__has_builtin) && __has_builtin(__builtin_ctzll) /*  is builtin for gcc and clang */
-	 #pragma message( "ya_ctz64() using __builtin_ctzll()")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_ctz64() using __builtin_ctzll()")
+	  #endif
 	  return __builtin_ctzll(x);
 	#elif defined(_M_ARM) || defined(_M_ARM64) || defined(_M_HYBRID_X86_ARM64) || defined(_M_ARM64EC)
-	 #pragma message( "ya_ctz64() using _CountTrailingZeros64()")
+	 #ifndef NDEBUG
+	  #pragma message( "ya_ctz64() using _CountTrailingZeros64()")
+	 #endif
      return (int)_CountTrailingZeros64(x);
 	#elif defined(_WIN64)
 	 #if defined(__AVX2__) || defined(__BMI__)
-	  #pragma message( "ya_ctz64() using _tzcnt_u64()")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_ctz64() using _tzcnt_u64()")
+	  #endif
       return (int)_tzcnt_u64(x);
 	 #else
-	  #pragma message( "ya_ctz64() using _BitScanForward64()")
+	  #ifndef NDEBUG
+	   #pragma message( "ya_ctz64() using _BitScanForward64()")
+	  #endif
       unsigned long r;
       _BitScanForward64(&r, x);
       return (int)r;
 	 #endif	  
 	#else /* portable C solution - based on hackers delight ntz7 expanded to 64 bits by Peter Miller, this version gives better 32 bit code */
 	/* both versions don't check for x==0 as that's not necessary here */
-	 #pragma message( "ya_ctz64() using C code")
+	 #ifndef NDEBUG
+	  #pragma message( "ya_ctz64() using C code")
+	 #endif
 	 uint_fast8_t b5, b4, b3, b2, b1, b0;
    #if 1 /* fastest for both w64 and w32 */
      uint32_t y;
@@ -357,7 +390,9 @@
  #else
 	  /* forced C version */
 	// see https://godbolt.org/#z:OYLghAFBqd5QCxAYwPYBMCmBRdBLAF1QCcAaPECAMzwBtMA7AQwFtMQByARg9KtQYEAysib0QXACx8BBAKoBnTAAUAHpwAMvAFYTStJg1DIApACYAQuYukl9ZATwDKjdAGFUtAK4sGIAMykrgAyeAyYAHI%2BAEaYxCBmABykAA6oCoRODB7evgGp6ZkCoeFRLLHxSbaY9o4CQgRMxAQ5Pn5c1bVZDU0EJZExcSDSCo3NrXkdo739ZRXDAJS2qF7EyOwc5v5hyN5YANQm/m6j%2BIIAdAhH2Pu3APR3%2B15hBABskgD6BCYaAIJbOz2mEOx1GxDCwEu11u%2Bwe%2BzYLGQKQAnj9/mZtgxdl4DkcTgR8Kgof5sGiXvtkUwPrsAF4QZ6Cd5ffaqBaHP4/ACcJgA7BZYQAqfbETAEVYMBT7AgIYEMQbEfaoKhS4hMOgQ/Y0uKoMAcSVhFm3AV3NFcp4vD5UJijRLM/bRACspHt0ntgXtZmd0Q69o0RysHIxeGVXDRMNuDII/jMzNR/gDv3D9odIIAIvsIKpDmZXvsNKoNIWi4WAGJl8tltlHEt5/YgfbR/1J5u3MPh5Fp5PV1TXa7RyiR6NfBY9%2BNtmFx9Md8y5gC0cf5LZbcIAkgpPEwCMDwcAEAQWOkCPsuLPooRzuPbtFJJ2INOc3mC0WK1X/DWNHXj69/Ze3bf77m%2BaliWwGvu%2Bn6JD%2BfxJtEZj/tmgEFiByEaCWYG1vWkhQYm4bevBM6Pv4RHEUR6EfvWZjYTBH5HOmd4IY%2BDpMcxTFkZ%2BoZjtB4YimKxAMMm2b8tegl/tYHoiXhYnRH6nHov4NRKEmpoaJyLIzrR%2ByzqOFiruuBhbsKeC7vuh7Hqe55LkpHIqQJGmZgxQHFs%2BFblmx9aNrJME3nZWYEY5wFlsWL4guB9ZcN%2Bnm4f4t6%2BQ%2BjmBahIGJaBIUYfskGRTCsExQ5SGoflKGFW5%2BxYZlV5cDlfmqCRNW1f4xWUWVvqVXFqgse1HUOsVHEJkmPHirZlguhJ0VSXBUkVVJMkJlsrjBlZ/wqbyqZoiwaoMBACymnykZMkeo6pj1Yb8MQma0T12mjm4eLnVtXEpOCghUBA5iUWYDrBOo2YOugJgOm4DCvaQqikJS1K0HSrJbbJ22phwSy0JwDq8H4HBaKQqCcNdlhieuqzrNm/g8KQBCaPDSwANYJE6iMcJIKNkxjnC8AoIAaCTZNLHAsBIGgLApHQcTkJQfMC/Q8TAFwDqejQtBbsQrMQNEjNnswxDIpwxOq00yIAPLRNomAOJrvB82wgi6wwtAa2jvBYNEXjAG4Yi0Kz3B25ga1GOItukPgIoOHgABumBu%2BjmCqEbXhbib5CCDUjO0Hg0SqurHhYIzBDgiwsch8Q0TpJgqae4YwBJ0YnN8AYwAKAAangmAAO66ykjCx/wggiGI7BSDIgiKCo6i%2B7oHQGBXpg45Y%2BjJ6zkBLKgKR1BKnCzrr/i8Kgefglgs%2BbZ0RtLy4DDuJ4bR6CEYQDOUQwdGkGRLxM7QFPfWSzPKeh2Af3RjC0p%2BTPvgd6g/zftfeIUwf6Pw/sAy%2Bcwb5LDxmsHuCMkYM19pjDgLJEivFnO8fYwBkDIGPA6c4cEIC4EICQQmXAFi8FJrbBYlNqb6E4PTUgqN0boJZmzDm9DSDc0QCgVA/NBZkAoBAUWIiQAsAhI3JkXhkDNA%2BPg5AHwpZmHZrLeWitla%2B21urWOei9YGwPrHM2jACCW2toze2jtna0FdrHLAXsy4bHRv7L%2BIcw68AjlHGO7s45blpujJOKcdbp1cbQ7Ouc4gFyUMXZx5dQC8KoNXOuDdm6t1RsTDuwhRDiF7jkgeahGa6E9GPYw1hrDT2iLveei8shu1XtFWcLBowby3ngHe8B4E1C/s4CArhIEdAvqUd%2Bt9CgPz/k/O%2BRQGAgPmFMXpgCGA9HGFMj%2BSyl6rL6DAsZtgIHrPATMXZoCJDwJWIgs5zCODIzYYzdB%2BwACyYQADiAB1PBBCiEkPOB%2BMh%2BAiAKi2NQ2hnNGHvWuaw9hG9ma2G4XQrQXMYACJ8cgaOJBhYQCaDXZQhgahCAQKgRuWTTZCLFpuLIuLwi0AJUS6FpAJHixAJLaWDKyUiIiKwDYpLhHi11tHWlxLGaot%2BMQGusLUUNDOLCnJXd8nSEKUoYpw89DlJQJUqeITakY3qQIRpa92lxG3qHbppBiBeEEHgNgAAVVAnhtUIPWFAs4VL8WEqFf4rOmB2Ds0bqqFIJtkE3NQRwzg2BI5osBZg7BuDlHfNIdjKwU99jkKjcCmhPDEXgppiwkNMKOBcPZgi8m1yzC8BzlwQsdy0GwuLQw0gecMjOEkEAA%3D%3D%3D
-	#pragma message( "ya_ctz64() using C code [forced]")
+	#ifndef NDEBUG
+	 #pragma message( "ya_ctz64() using C code [forced]")
+	#endif
 	static inline int ya_ctz64(uint64_t x) 
 		{ /* returns the number of trailing zero's in x  */
 		 uint_fast8_t  b5, b4, b3, b2, b1, b0;
