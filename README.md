@@ -5,18 +5,25 @@ This started with the code from  stb_sprintf (v1.08) which is a public domain sn
 which itself was originally written by Jeff Roberts / RAD Game Tools, 2015/10/20.
 This version is dual licensed (MIT and Public Domain) - but note some of the required parts in other repositories and files in the ryu directory have different licences. 
 
-Release 2v1 adds no new functionality, but is faster than 2v0 (even 2v0 leveraging Ryu for double->string conversions). - see the "Timing" section below.
-Part of this speed increase is because double->string conversion now uses the fpfmt algorithm as described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof . Because of this the use of the Ryu algorithm is no longer recommended - and as such will give a warning at compile time if its selected (YA_SP_RYU).
+Release 2v4 adds a function to directly convert a double to a string of characters in %f format (a fixed point format with "prec" characters after the decimal point). Please note this function may require a very large amount of space for the result, at least 308+prec+3 characters if converting DBL_MAX (1.8e308) - and an absolute minimum space for 20 characters should be provided as it is used as "working space" for the algorithm. If this is an issue ya_snprintf() can be used which allows the buffer size to be limited, and the required buffer size to be found (from the return value of ya_snprintf() or by using the %n format).
 
-Release 2v3 adds 1 more functions that directly converts a double or float to a string of characters (making 4 in total as 2v2 provided 3) - these are declared in ya-dconvert.h and all use variants of the fpfmt algorithm.
-2v3 also renames ya_dconvert_fixed() to ya_dconvert_efmt() as well as adding ya_dconvert_gfmt(). Finally 2v3 changes the return types of these functions to char *, the pointer they return points to the final '\0' in the string stored at dst. This can always be ignored, but this pointer allows another string to be easily added on immediately after the converted number, or the length calculated more efficiently than using strcat() or strlen().
+Release 2v4  also fixes a rounding issue that mainly impacted %f conversions of doubles where the least significant digit could be in error by 1. This issue was introduced in 2v0 (if Ryu conversions were enabled).
+Over 2 million extra test cases have been added, bringing the total to over 62Million (these detected 30 errors in 2v3).
+Note the execution time of the test program is now much slower (~1500 secs on an i3-10100 vs ~ 100 secs before) due to the extra tests.
+
+2v4 also changes the default configuration for ya_sprintf.c to match the native "printf".
+
+Finally release 2v4 has been tested with the winlibs release of gcc 16.1.0 and it compiles and executes without error. However, the author has found that gcc 16.1.0 can generate slower code than 15.2.0, for example the ya_sprintf test program when compiled with gcc 15.2.0 executes in 1517 seconds (i3-10100, 64 bit executable) while when compiled with gcc 16.1.0 it takes 1526 seconds.
+
+The list of direct conversion functions is:
 ~~~
 char *ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*e",prec,f). dst must have space for at least 9+prec characters*/
+char *ya_dconvert_ffmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*f",prec,f). dst must have space for at least 308+prec+3 characters if f is DBL_MAX (1.8e308) and an absolute minimum space of 20 characters */
 char *ya_dconvert_gfmt(char *dst, double f, int32_t prec) ; /* prec is required total number of mantissa digits - emulates sprintf(dst,"%.*g",prec,f). dst must have space for at least 8+prec characters */
 char *ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
 char *ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
 ~~~
-ya_dconvert_efmt() & ya_dconvert_gfmt() provide a (faster) alternative to an existing sprintf capability (by avoiding the runtime overhead of decoding the format string), while ya_shortd() and in particular ya_shortf() provide new functionality as the resultant string can be converted back to a float/double (via fast_strtod() or fast_strtof()) to give the initial value (the closest existing capability is sprintf(dst,"%.*g",DBL_DECIMAL_DIG,f) ).   A few examples of the "short" functions:
+ya_dconvert_efmt(), ya_dconvert_ffmt() & ya_dconvert_gfmt() provide a (faster) alternative to an existing sprintf capability (by avoiding the runtime overhead of decoding the format string), while ya_shortd() and in particular ya_shortf() provide new functionality as the resultant string can be converted back to a float/double (via fast_strtod() or fast_strtof()) to give the initial value (the closest existing capability is sprintf(dst,"%.*g",DBL_DECIMAL_DIG,f) ).   A few examples of the "short" functions:
 ~~~
  float fin;
  char buf_f[31],buf_d[31];// doubles will need at most sign(1)+DBL_DECIMAL_DIG(17)+decimal point(1)+"e"(1)+exponent sign(1)+exponent(3) + null(1) = 25 characters,
@@ -41,15 +48,14 @@ Gives for some example values:
 ~~~
 Note that the values printed by ya_shortf() and ya_shortd() in the above examples are sometimes different as doubles have a much higher resolution and range than floats. Also note that the "short" functions print values as compactly as possible (e.g. the last example uses "e9" rather than "e+09" as used by sprintf("%f") which is two characters longer).
 
-Versions 2.2 also uses "#pragma message" to tell the user at compile time if specific builtin functions are being used (these are all in ya_dconvert.h) - for example gcc 15.2.0 gives:
+Versions 2.2 and above also use "#pragma message" to tell the user at compile time if specific builtin functions are being used (these are all in ya_dconvert.h) - for example gcc 15.2.0 gives:
 ~~~
 D:\dev-cpp-files\ya-sprintf\ya-dconvert.h	In function 'ya_clz32':
 270	19	D:\dev-cpp-files\ya-sprintf\ya-dconvert.h	[Note] '#pragma message: ya_clz32() using __builtin_clz(x)'
 ~~~
-These messages do not count as compiler errors or warnings, but do provide useful feedback. If an unexpected function is selected (in particular if a "C version" is reported but a builtin is available), please inform the author.
+These messages do not count as compiler errors or warnings, but do provide useful feedback. If an unexpected function is selected (in particular if a "C version" is reported but a builtin is available), please inform the author. If NDEBUG is defined at compile time these messages do not appear, defining NDEBUG also turns off asserts in the code.
 
 "ya-sprintf" stands for Yet Another sprintf. 
-
 
 It now provides an almost full C23 printf family implementation including wide characters/strings.
 ya_sprintf also provides a number of extensions, the most significant is the ability to print 128 bit integers (__int128)
@@ -421,8 +427,9 @@ The next 2 functions write to stdout:
  void ya_s_set_separators( char comma, char period )
   Set the comma and period (decimal point) characters to use.
 
-Additionally, the following 4 functions are defined in ya-dconvert.h:
+Additionally, the following 5 functions are defined in ya-dconvert.h:
  char *ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*e",prec,f). dst must have space for at least 9+prec characters*/
+ char *ya_dconvert_ffmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*f",prec,f). dst must have space for at least 308+prec+3 characters if f is DBL_MAX (1.8e308) and an absolute minimum space of 20 characters */
  char *ya_dconvert_gfmt(char *dst, double f, int32_t prec) ; /* prec is required total number of mantissa digits - emulates sprintf(dst,"%.*g",prec,f). dst must have space for at least 8+prec characters */
  char *ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
  char *ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
@@ -471,3 +478,14 @@ To print long doubles and float_128's, ya_sprintf uses a new algorithm developed
 For doubles and floats ( ya_shortf() ) the fpfmt algorithm is used. This is described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof. The code in ya_sprintf (in ya-dconvert.c and ya_s__DD_to_str() ) uses a new approach to "Omit Needless Multiplications" and uses u2_64 for 128 bit maths. For exponential formatted numbers this is currently believed to be the fastest algorithm (unfortunately this algorithm was published after ya-sprintf 2v0 was finished). While the algorithm has a proof, and the test program does not identify any errors, it is not possible to exhaustively check every possible value (all float values have been tested with ya_shortf() as this only takes ~ 2 minutes), so again if an exact result is essential the %a format is guaranteed to be exact.
 
 If Ryu is selected then its only used for double conversions (i.e. in ya_s__DD_to_str()). Ryu is described in "Ryū revisited: printf floating point conversion", Ulf Adams, 2019, https://dl.acm.org/doi/10.1145/3360595 . As noted above the fpfmt algorithm is faster and just as accurate so there is no need to continue to use the Ryu algorithm within ya-sprintf (and it may be removed in a future release).
+
+# History
+Release 2v0 added the option to use Ryu for double->string conversions.
+
+Release 2v1 adds no new functionality, but is faster than 2v0 (even 2v0 leveraging Ryu for double->string conversions). - see the "Timing" section below.
+Part of this speed increase is because double->string conversion now uses the fpfmt algorithm as described in https://research.swtch.com/fp and https://research.swtch.com/fp-proof . Because of this the use of the Ryu algorithm is no longer recommended - and as such will give a warning at compile time if its selected (YA_SP_RYU).
+
+Release 2v2 added 3 functions to directly converts a double or float to a string of characters.
+
+Release 2v3 adds 1 more function that directly converts a double or float to a string of characters (making 4 in total as 2v2 provided 3) - these are declared in ya-dconvert.h and all use variants of the fpfmt algorithm.
+2v3 also renames ya_dconvert_fixed() to ya_dconvert_efmt() as well as adding ya_dconvert_gfmt(). Finally 2v3 changes the return types of these functions to char *, the pointer they return points to the final '\0' in the string stored at dst. This can always be ignored, but this pointer allows another string to be easily added on immediately after the converted number, or the length calculated more efficiently than using strcat() or strlen().
