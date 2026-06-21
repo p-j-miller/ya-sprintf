@@ -886,7 +886,7 @@ static inline void append_d_digits_ya_sprintf(const uint32_t olength, uint32_t d
 // params must previously have been calculated as:
 //	const uint64_t ieeeMantissa = bits & ((1ull << DOUBLE_MANTISSA_BITS) - 1);
 //	const uint32_t ieeeExponent = (uint32_t) ((bits >> DOUBLE_MANTISSA_BITS) & ((1u << DOUBLE_EXPONENT_BITS) - 1));
-int d2exp_buffered_n_ya_sprintf(const uint64_t ieeeMantissa,const uint32_t ieeeExponent, uint32_t precision, char* result,int32_t *decimal_pos) 
+int d2exp_buffered_n_ya_sprintf(const uint64_t ieeeMantissa,const uint32_t ieeeExponent, int32_t precision, char* result,int32_t *decimal_pos) 
 {
   // no checks for special case (nan, inf, etc) required here as they are dealt with by ya_sprintf() before calling this function
   int32_t e2;
@@ -905,6 +905,7 @@ int d2exp_buffered_n_ya_sprintf(const uint64_t ieeeMantissa,const uint32_t ieeeE
 
   const bool printDecimalPoint = precision > 0;// note we don't actually print the decimal point in this function
   ++precision;
+  if(precision<0) {result[0]='0'; *decimal_pos=0; return 1; } // can happen with %f
   int index = 0;
 
   uint32_t digits = 0;

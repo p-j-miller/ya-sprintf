@@ -39,7 +39,7 @@ extern "C" {
 //	const uint64_t ieeeMantissa = bits & ((1ull << DOUBLE_MANTISSA_BITS) - 1);
 //	const uint32_t ieeeExponent = (uint32_t) ((bits >> DOUBLE_MANTISSA_BITS) & ((1u << DOUBLE_EXPONENT_BITS) - 1));
 // 
-int d2exp_buffered_n_ya_sprintf(const uint64_t ieeeMantissa,const uint32_t ieeeExponent, uint32_t precision, char* result,int32_t *decimal_pos) ;
+int d2exp_buffered_n_ya_sprintf(const uint64_t ieeeMantissa,const uint32_t ieeeExponent, int32_t precision, char* result,int32_t *decimal_pos) ;
 
 #ifdef __cplusplus
 }
