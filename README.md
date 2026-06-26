@@ -5,15 +5,8 @@ This started with the code from  stb_sprintf (v1.08) which is a public domain sn
 which itself was originally written by Jeff Roberts / RAD Game Tools, 2015/10/20.
 This version is dual licensed (MIT and Public Domain) - but note some of the required parts in other repositories and files in the ryu directory have different licences. 
 
-Release 2v4 adds a function to directly convert a double to a string of characters in %f format (a fixed point format with "prec" characters after the decimal point). Please note this function may require a very large amount of space for the result, at least 308+prec+3 characters if converting DBL_MAX (1.8e308) - and an absolute minimum space for 20 characters should be provided as it is used as "working space" for the algorithm. If this is an issue ya_snprintf() can be used which allows the buffer size to be limited, and the required buffer size to be found (from the return value of ya_snprintf() or by using the %n format).
-
-Release 2v4  also fixes a rounding issue that mainly impacted %f conversions of doubles where the least significant digit could be in error by 1. This issue was introduced in 2v0 (if Ryu conversions were enabled).
-Over 2 million extra test cases have been added, bringing the total to over 62Million (these detected 30 errors in 2v3).
-Note the execution time of the test program is now much slower (~1500 secs on an i3-10100 vs ~ 100 secs before) due to the extra tests.
-
-2v4 also changes the default configuration for ya_sprintf.c to match the native "printf".
-
-Finally release 2v4 has been tested with the winlibs release of gcc 16.1.0 and it compiles and executes without error. However, the author has found that gcc 16.1.0 can generate slower code than 15.2.0, for example the ya_sprintf test program when compiled with gcc 15.2.0 executes in 1517 seconds (i3-10100, 64 bit executable) while when compiled with gcc 16.1.0 it takes 1526 seconds.
+2v5 is a minor update to 2v4, providing a (much) faster set of tests and optimising the %f code (and the ya_dconvert_ffmt() function) to make its runtime largely independent of the value to be converted. In 2v4 the run-time of the %f function increased (but was always bounded at a relatively small value) if the digit used for rounding was "5" and this was followed by a string of zero's. 
+This makes no significant change to the execution time of the test programs.
 
 The list of direct conversion functions is:
 ~~~
@@ -489,3 +482,13 @@ Release 2v2 added 3 functions to directly converts a double or float to a string
 
 Release 2v3 adds 1 more function that directly converts a double or float to a string of characters (making 4 in total as 2v2 provided 3) - these are declared in ya-dconvert.h and all use variants of the fpfmt algorithm.
 2v3 also renames ya_dconvert_fixed() to ya_dconvert_efmt() as well as adding ya_dconvert_gfmt(). Finally 2v3 changes the return types of these functions to char *, the pointer they return points to the final '\0' in the string stored at dst. This can always be ignored, but this pointer allows another string to be easily added on immediately after the converted number, or the length calculated more efficiently than using strcat() or strlen().
+
+Release 2v4 adds a function to directly convert a double to a string of characters in %f format (a fixed point format with "prec" characters after the decimal point). Please note this function may require a very large amount of space for the result, at least 308+prec+3 characters if converting DBL_MAX (1.8e308) - and an absolute minimum space for 20 characters should be provided as it is used as "working space" for the algorithm. If this is an issue ya_snprintf() can be used which allows the buffer size to be limited, and the required buffer size to be found (from the return value of ya_snprintf() or by using the %n format).
+
+Release 2v4  also fixes a rounding issue that mainly impacted %f conversions of doubles where the least significant digit could be in error by 1. This issue was introduced in 2v0 (if Ryu conversions were enabled).
+Over 2 million extra test cases have been added, bringing the total to over 62Million (these detected 30 errors in 2v3).
+Note the execution time of the test program is now much slower (~1500 secs on an i3-10100 vs ~ 100 secs before) due to the extra tests.
+
+2v4 also changes the default configuration for ya_sprintf.c to match the native "printf".
+
+Finally release 2v4 has been tested with the winlibs release of gcc 16.1.0 and it compiles and executes without error. However, the author has found that gcc 16.1.0 can generate slower code than 15.2.0, for example the ya_sprintf test program when compiled with gcc 15.2.0 executes in 1517 seconds (i3-10100, 64 bit executable) while when compiled with gcc 16.1.0 it takes 1526 seconds.
