@@ -2838,16 +2838,25 @@ static bool ya_s__DD_to_str(char const **start, uint32_t *len, char *out, int32_
  	}	
  // d2exp_buffered_n_ya_sprintf() ignores the sign of vh, so we don't need to make it positive here
 
-  // ryu code starts here
+  // fpfmt/ryu interface code starts here
   int32_t dec_exp,digits=0;
   // frac_digits is absolute normally, but if you want from first significant digits (got %g and %e), or in 0x80000000
   if( (frac_digits & 0x80000000)==0)
   	{// %f format - we need to know 10's exponent to fix decimal point 
-	 // for %f we need to get 10's exponent 1st, then use this to set precision 
+	 // so, for %f we need to get 10's exponent 1st, then use this to set precision 
+ #if !defined(YA_SP_RYU) /* 2v5 - note this is only possible with fpfmt - there is not a RYU version of this code, this version makes little difference to execution speed of test program but may help "real" programs  */
+     uint64_t dmant; // decimal mantissa
+	 ya_d2exp_todmant_exp(mantissa,expo, 18, &dmant, &dec_exp); // used to accurately set dec_exp
+	 digits=(int32_t)(dec_exp + (int32_t)frac_digits);// calculate actual value for digits required to give specified precision (for %f that's digits after dp)
+	 if(digits>=18) digits=18; // 18 is a sensible limit (any other value gives part 2 errors) - this must be limited - the "main code" will add extra zero's if the user asks for something "silly". 	 
+	 else  ya_d2exp_todmant_exp(mantissa,expo, digits, &dmant, &dec_exp); // we have already done the conversion with digits=18 above, so only need this for digits<18 	 
+  	 *len=ya_d2exp_dmant_to_string(dmant, digits, out) ; // actually mantissa to a string in out	 
+ #else /* 2v4 */
 	 *len=d2exp_buffered_n_ya_sprintf(mantissa,expo, 18, out, &dec_exp); // used to accurately set dec_exp (may also be used as final result if digits>=18.
 	 digits=(int32_t)(dec_exp + (int32_t)frac_digits);// calculate actual value for digits required to give specified precision (for %f that's digits after dp)
 	 if(digits>=18) digits=18; // 18 is a sensible limit (any other value gives part 2 errors) - this must be limited - the "main code" will add extra zero's if the user asks for something "silly". 
   	 else *len=d2exp_buffered_n_ya_sprintf(mantissa,expo, digits, out, &dec_exp);// we have already done the conversion with digits==18 above, so only need this for digits<18
+#endif	 
   	}
   else 
   	{digits=(int32_t)(frac_digits & 0x7ffffff);
@@ -2863,6 +2872,50 @@ static bool ya_s__DD_to_str(char const **start, uint32_t *len, char *out, int32_
    return ng;  
 }
 
+#include <stdalign.h> // for alignas() - this has been available since C11
+ /* u2_64_rem_table[] is table of (1<<ya_M_SHFT)/10^N */
+alignas(64) const u2_64 u2_64_rem_table[] = {
+  {0x1000000000000000,0x0}, // 0
+  {0x199999999999999,0x9999999999999999}, // 1
+  {0x28f5c28f5c28f5,0xc28f5c28f5c28f5c}, // 2
+  {0x4189374bc6a7e,0xf9db22d0e5604189}, // 3
+  {0x68db8bac710c,0xb295e9e1b089a027}, // 4
+  {0xa7c5ac471b4,0x784230fcf80dc337}, // 5
+  {0x10c6f7a0b5e,0xd8d36b4c7f349385}, // 6
+  {0x1ad7f29abc,0xaf485787a6520ec0}, // 7
+  {0x2af31dc46,0x11873bf3f70834ac}, // 8
+  {0x44b82fa0,0x9b5a52cb98b40544}, // 9
+  {0x6df37f6,0x75ef6eadf5ab9a20}, // 10
+  {0xafebff,0xbcb24aafef78f69}, // 11
+  {0x119799,0x812dea11197f27f0}, // 12
+  {0x1c25c,0x268497681c2650cb}, // 13
+  {0x2d09,0x370d42573603d4e1}, // 14
+  {0x480,0xebe7b9d58566c87c}, // 15
+  {0x73,0x4aca5f6226f0ada6}, // 16
+  {0xb,0x877aa3236a4b4490}, // 17
+  {0x1,0x2725dd1d243aba0e}, // 18
+  {0x0,0x1d83c94fb6d2ac34}, // 19
+  {0x0,0x2f394219248446b}, // 20
+  {0x0,0x4b8ed0283a6d3d}, // 21
+  {0x0,0x78e480405d7b9}, // 22
+  {0x0,0xc16d9a009592}, // 23
+  {0x0,0x1357c299a88e}, // 24
+  {0x0,0x1ef2d0f5da7}, // 25
+  {0x0,0x318481895d}, // 26
+  {0x0,0x4f3a68dbc}, // 27
+  {0x0,0x7ec3daf9}, // 28
+  {0x0,0xcad2f7f}, // 29
+  {0x0,0x14484bf}, // 30
+  {0x0,0x2073ac}, // 31
+  {0x0,0x33ec4}, // 32
+  {0x0,0x5313}, // 33
+  {0x0,0x84e}, // 34
+  {0x0,0xd4}, // 35
+  {0x0,0x15}, // 36
+  {0x0,0x2}, // 37
+  {0x0,0x0}, // 38
+ };
+#define MAX_INDEX_u2_64_rem_table 38
 
 
 #if defined(YA_SP_SPRINTF_QF)  && defined(__SIZEOF_FLOAT128__) 
@@ -2989,7 +3042,36 @@ static bool ya_s__real128_to_str(char const **start, uint32_t *len, char *out, i
 		 	{ 
 			  if(d==5)
 			  	{
-#if 1		
+#if 1			 /* new approach for 2v5 - uses a lookup table for remainder rather than calculating (potentially many extra) digits 
+					 rem*10^N < 1<<ya_M_SHFT
+					or
+					 rem < (1<<ya_M_SHFT)/10^N
+					The table provides (1<<ya_M_SHFT)/10^N
+
+					This is effectively identical code to that used for LD's below
+					Small improvement in execution time of test program vs 2v4, but by avoiding for loop on digits execution speed should be more consistent					
+				 */
+				 // int cmp_u2_64(u2_64 x,  u2_64 y); // returns -1 if x < y, 0 if x=y and 1 if x>y
+				 if(tens>55 || tens<-55)
+				 	roundup=true;// cannot be exactly 0.5 as power of 10 cannot be exactly represented
+				 else 
+				  if(((m.hi&M_MASK)|m.lo)==0) 
+				 	{ // =5 (no remainder after "5") 	
+					 if(lastd & 1) roundup=true; // exactly 5, round to even
+					}
+				 else
+				 	{
+					 m.hi&=M_MASK; // mask out d
+					 int N=38-(digits+2); // matches i=digits+2; both "37-" and "38-" work
+					 if(N>0 && N<=MAX_INDEX_u2_64_rem_table) // N>0 as we have not multiplied m by 10 after removing d
+						{if(cmp_u2_64(m,u2_64_rem_table[N])<0)
+							{if(lastd & 1) roundup=true; // exactly 5, round to even
+							}
+						 else roundup=true; // >50000
+						}
+					 else roundup=true; // matches code below 
+					}  	
+#elif 1		/* 2v4 */
 				 for(int i=digits+2;i<=37;++i) // must be at least i<37, i<=37 also passes test program, i<=38 fails with 3 errors
 				 	{// create extra digits - if they one is non-zero stop (if all are zero its exactly 0.5, if one is non-zero its >0.5) 
 				 	 m.hi&=M_MASK; // mask out d
@@ -3187,7 +3269,35 @@ static bool ya_s__LD_to_str(char const **start, uint32_t *len, char *out, int32_
 		 	{ 
 			  if(d==5)
 			  	{
-#if 1		
+#if 1			 /* new approach for 2v5 - uses a lookup table for remainder rather than calculating (potentially many extra) digits 
+					 rem*10^N < 1<<ya_M_SHFT
+					or
+					 rem < (1<<ya_M_SHFT)/10^N
+					The table provides (1<<ya_M_SHFT)/10^N
+					
+					This is effectively identical code to that used for float128's above
+					Small improvement in execution time of test program vs 2v4, but by avoiding for loop on digits execution speed should be more consistentt
+				 */
+				 if(tens>27 || tens<-27)
+				 	roundup=true;// cannot be exactly 0.5 as power of 10 cannot be exactly represented
+				 else 
+				  if(((m.hi&M_MASK)|m.lo)==0) 
+				 	{ // =5 (no remainder after "5") 	
+					 if(lastd & 1) roundup=true; // exactly 5, round to even
+					}
+				 else
+				 	{
+					 m.hi&=M_MASK; // mask out d
+					 int N=22-(digits+2); // matches i=digits+2; 20 gives 10 errors 21,22,23 all OK, use 22
+					 if(N>0 && N<=MAX_INDEX_u2_64_rem_table) // N>0 as we have not multiplied m by 10 after removing d
+						{if(cmp_u2_64(m,u2_64_rem_table[N])<0)
+							{if(lastd & 1) roundup=true; // exactly 5, round to even
+							}
+						 else roundup=true; // >50000
+						}
+					 else roundup=true; // matches code below 
+					}			  			  	
+#elif 1		/* 2v4 */
 				 for(int i=digits+2;i<=22;++i) // digits+2 as we have already created digits+1, expect zero round the loop errors for >=21 sig figs for LD's <=21,22,23 give zero errors with test program - use 22
 				 	{// create extra digits - if they one is non-zero stop (if all are zero its exactly 0.5, if one is non-zero its >0.5) 
 				 	 m.hi&=M_MASK; // mask out d

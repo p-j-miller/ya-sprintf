@@ -274,8 +274,8 @@ Starting PART1 sprintf tests:
   Just checked -1.25007957045730041e+180
   Just checked -4.23632488631213564e-203
   Just checked -7.7049343115635846e-16
- All double round loop tests completed in 32.1058 secs
- Average time per test was 594.8 ns
+ All double round loop tests completed in 32.088 secs
+ Average time per test was 594.5 ns
  53979237 tests 2695716 differences
  Tested ya_sprintf() double-double round loop:
  0 errors when 21 sf string converted back to a double (0 are 1 bit) (sprintf gives 0 differences)
@@ -329,6 +329,7 @@ Now checking double rounding for %e,%f,%g
 20 sig fig 7830 tests: 4520 differences on string compares
 21 sig fig 7830 tests: 4699 differences on string compares
  Should get 0 differences on string compares at <= 17 sig figs :0 errors found so far
+ Time so far (after all double tests) is 32.2577 secs
 
  Now checking fast_strtof128():
  Results for fast_strtof128() tests:
@@ -370,9 +371,9 @@ Now checking f128's in detail: ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x)):
 31 sig fig 30171 tests: 0 differences on string compares, 20038 round the loop errors with quadmath_snprintf() and 20038 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
 32 sig fig 30171 tests: 0 differences on string compares, 20036 round the loop errors with quadmath_snprintf() and 20036 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
 33 sig fig 30171 tests: 0 differences on string compares, 20022 round the loop errors with quadmath_snprintf() and 20022 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
-34 sig fig 30171 tests: 1 differences on string compares, 10046 round the loop errors with quadmath_snprintf() and 10046 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
-35 sig fig 30171 tests: 8 differences on string compares, 13 round the loop errors with quadmath_snprintf() and 13 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
-36 sig fig 30171 tests: 152 differences on string compares, 0 round the loop errors with quadmath_snprintf() and 0 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
+34 sig fig 30171 tests: 0 differences on string compares, 10046 round the loop errors with quadmath_snprintf() and 10046 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
+35 sig fig 30171 tests: 1 differences on string compares, 13 round the loop errors with quadmath_snprintf() and 13 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
+36 sig fig 30171 tests: 50 differences on string compares, 0 round the loop errors with quadmath_snprintf() and 0 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
 37 sig fig 30171 tests: 498 differences on string compares, 0 round the loop errors with quadmath_snprintf() and 0 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
 38 sig fig 30171 tests: 5273 differences on string compares, 0 round the loop errors with quadmath_snprintf() and 0 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
 39 sig fig 30171 tests: 24741 differences on string compares, 0 round the loop errors with quadmath_snprintf() and 0 with ya_s_snprintf(buf,sizeof (buf),"%.*Qe",sf,(x))
@@ -415,42 +416,43 @@ Now checking f128 rounding for %e,%f,%g
 33 sig fig 60372 tests: 0 differences on string compares
  f128 rounding tests finished 0 error(s) found
  Float128 should show 0 string differences at <= 33 sig figs and zero round the loop errors for >= 36 sig figs
+ Time so far (after all double and float128 tests) is 72.138 secs
 
 Now checking long doubles (%e,%g,%f):
- 1 sig fig 91503 tests: 0 differences on string compares, 20485 round the loop errors with my_snprintf() and 20485 with ya_s_snprintf()
- 2 sig fig 91503 tests: 0 differences on string compares, 20458 round the loop errors with my_snprintf() and 20458 with ya_s_snprintf()
- 3 sig fig 91503 tests: 0 differences on string compares, 20438 round the loop errors with my_snprintf() and 20438 with ya_s_snprintf()
- 4 sig fig 91503 tests: 0 differences on string compares, 20420 round the loop errors with my_snprintf() and 20420 with ya_s_snprintf()
- 5 sig fig 91503 tests: 0 differences on string compares, 20421 round the loop errors with my_snprintf() and 20421 with ya_s_snprintf()
- 6 sig fig 91503 tests: 0 differences on string compares, 20410 round the loop errors with my_snprintf() and 20410 with ya_s_snprintf()
- 7 sig fig 91503 tests: 0 differences on string compares, 20404 round the loop errors with my_snprintf() and 20404 with ya_s_snprintf()
- 8 sig fig 91503 tests: 0 differences on string compares, 20383 round the loop errors with my_snprintf() and 20383 with ya_s_snprintf()
- 9 sig fig 91503 tests: 0 differences on string compares, 20381 round the loop errors with my_snprintf() and 20381 with ya_s_snprintf()
-10 sig fig 91503 tests: 0 differences on string compares, 20388 round the loop errors with my_snprintf() and 20388 with ya_s_snprintf()
-11 sig fig 91503 tests: 0 differences on string compares, 20369 round the loop errors with my_snprintf() and 20369 with ya_s_snprintf()
-12 sig fig 91503 tests: 0 differences on string compares, 20367 round the loop errors with my_snprintf() and 20367 with ya_s_snprintf()
-13 sig fig 91503 tests: 0 differences on string compares, 20378 round the loop errors with my_snprintf() and 20378 with ya_s_snprintf()
-14 sig fig 91503 tests: 0 differences on string compares, 20375 round the loop errors with my_snprintf() and 20375 with ya_s_snprintf()
-15 sig fig 91503 tests: 0 differences on string compares, 20362 round the loop errors with my_snprintf() and 20362 with ya_s_snprintf()
-16 sig fig 91503 tests: 0 differences on string compares, 20346 round the loop errors with my_snprintf() and 20346 with ya_s_snprintf()
-17 sig fig 91503 tests: 0 differences on string compares, 20337 round the loop errors with my_snprintf() and 20337 with ya_s_snprintf()
-18 sig fig 91503 tests: 0 differences on string compares, 20335 round the loop errors with my_snprintf() and 20335 with ya_s_snprintf()
-19 sig fig 91503 tests: 29 differences on string compares, 13595 round the loop errors with my_snprintf() and 13595 with ya_s_snprintf()
-20 sig fig 91503 tests: 4286 differences on string compares, 3360 round the loop errors with my_snprintf() and 3360 with ya_s_snprintf()
-21 sig fig 91503 tests: 9226 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-22 sig fig 91503 tests: 9894 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-23 sig fig 91503 tests: 9830 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-24 sig fig 91503 tests: 9837 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-25 sig fig 91503 tests: 9838 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-26 sig fig 91503 tests: 9852 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-27 sig fig 91503 tests: 37282 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-28 sig fig 91503 tests: 67253 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-29 sig fig 91503 tests: 70050 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-30 sig fig 91503 tests: 70324 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
-31 sig fig 91503 tests: 70356 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+ 1 sig fig 76797 tests: 0 differences on string compares, 20485 round the loop errors with my_snprintf() and 20485 with ya_s_snprintf()
+ 2 sig fig 76797 tests: 0 differences on string compares, 20458 round the loop errors with my_snprintf() and 20458 with ya_s_snprintf()
+ 3 sig fig 76797 tests: 0 differences on string compares, 20438 round the loop errors with my_snprintf() and 20438 with ya_s_snprintf()
+ 4 sig fig 76797 tests: 0 differences on string compares, 20420 round the loop errors with my_snprintf() and 20420 with ya_s_snprintf()
+ 5 sig fig 76797 tests: 0 differences on string compares, 20421 round the loop errors with my_snprintf() and 20421 with ya_s_snprintf()
+ 6 sig fig 76797 tests: 0 differences on string compares, 20410 round the loop errors with my_snprintf() and 20410 with ya_s_snprintf()
+ 7 sig fig 76797 tests: 0 differences on string compares, 20404 round the loop errors with my_snprintf() and 20404 with ya_s_snprintf()
+ 8 sig fig 76797 tests: 0 differences on string compares, 20383 round the loop errors with my_snprintf() and 20383 with ya_s_snprintf()
+ 9 sig fig 76797 tests: 0 differences on string compares, 20381 round the loop errors with my_snprintf() and 20381 with ya_s_snprintf()
+10 sig fig 76797 tests: 0 differences on string compares, 20388 round the loop errors with my_snprintf() and 20388 with ya_s_snprintf()
+11 sig fig 76797 tests: 0 differences on string compares, 20369 round the loop errors with my_snprintf() and 20369 with ya_s_snprintf()
+12 sig fig 76797 tests: 0 differences on string compares, 20367 round the loop errors with my_snprintf() and 20367 with ya_s_snprintf()
+13 sig fig 76797 tests: 0 differences on string compares, 20378 round the loop errors with my_snprintf() and 20378 with ya_s_snprintf()
+14 sig fig 76797 tests: 0 differences on string compares, 20375 round the loop errors with my_snprintf() and 20375 with ya_s_snprintf()
+15 sig fig 76797 tests: 0 differences on string compares, 20362 round the loop errors with my_snprintf() and 20362 with ya_s_snprintf()
+16 sig fig 76797 tests: 0 differences on string compares, 20346 round the loop errors with my_snprintf() and 20346 with ya_s_snprintf()
+17 sig fig 76797 tests: 0 differences on string compares, 20337 round the loop errors with my_snprintf() and 20337 with ya_s_snprintf()
+18 sig fig 76797 tests: 0 differences on string compares, 20335 round the loop errors with my_snprintf() and 20335 with ya_s_snprintf()
+19 sig fig 76797 tests: 29 differences on string compares, 13595 round the loop errors with my_snprintf() and 13595 with ya_s_snprintf()
+20 sig fig 76797 tests: 4273 differences on string compares, 3360 round the loop errors with my_snprintf() and 3360 with ya_s_snprintf()
+21 sig fig 76797 tests: 9091 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+22 sig fig 76797 tests: 9760 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+23 sig fig 76797 tests: 9830 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+24 sig fig 76797 tests: 9837 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+25 sig fig 76797 tests: 9838 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+26 sig fig 76797 tests: 9852 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+27 sig fig 76797 tests: 37282 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+28 sig fig 76797 tests: 67253 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+29 sig fig 76797 tests: 70050 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+30 sig fig 76797 tests: 70324 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
+31 sig fig 76797 tests: 70356 differences on string compares, 0 round the loop errors with my_snprintf() and 0 with ya_s_snprintf()
  Should show 0 string differences at <=18 sig figs and zero round the loop errors for >= 21 sig figs
 
-At end of Part 1 after 1515.81 secs : 60502947 tests, 0 errors
+At end of Part 1 after 154.093 secs : 60047061 tests, 0 errors
 
 Starting PART2 sprintf tests:
 Constant strings:
@@ -508,9 +510,9 @@ Constant strings:
   -1 (=-1) 340282366920938463463374607431768211455(= -1 as signed128) 3.40282e+38 (same as float128)
   0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000099 (998 zeros then 99)
   0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000099 (998 zeros then 99 to stderr)
-All tests completed in 1517.34 secs
+All tests completed in 155.623 secs
 PART2: 1911984 sprintf tests completed, no errors found
-Test program finished - a total of 62414931 tests executed
+Test program finished - a total of 61959045 tests executed
 
 */
 
@@ -1782,18 +1784,19 @@ int chk_LD_to_a(void)  // tests for long double
 			 	 if(sg<=sg_STR_EXACT) {return_errs++; printf("** Different %%g my_snprintf(%.20e) gives %s ya_s_snprintf() gives %s\n",(double)r_LD,buf_LD,buf_LDa);}
 	#endif		 	 
 			 	}	
-			// now test %f
+			// now test %f (we do check the full range for r_LD here as there are a relatively small number of tests with large values so these don't have a big impact on the execution time)
+			// table test_valued[] above has for example 1e+4930L,1e+4932L,LDBL_MAX  (=1.18973149535723176502126385303097021e+4932L) so we do check values with very large exponents (which have a very large number of digits in %f format)
 			 nos_tests++;
 			 my_snprintf (buf_LD, sizeof buf_LD,"%.*Lf",sg,r_LD);
 			 ya_s_snprintf(buf_LDa, sizeof buf_LDa,"%.*Lf",sg,r_LD);
 			 if(LD_F_strcmp(buf_LD,buf_LDa,sg)!=0)
-			 	{++errs;
+				{++errs;
 	#ifdef PR_LD		 	
-			 	 printf("** Different %%f my_snprintf() gives %s ya_s_snprintf() gives %s\n",buf_LD,buf_LDa);
+				 printf("** Different %%f my_snprintf() gives %s ya_s_snprintf() gives %s\n",buf_LD,buf_LDa);
 	#else
-			 	 if(sg<=sg_STR_EXACT) {return_errs++; my_printf("** Different %%f my_snprintf(%.30Le) gives %s ya_s_snprintf() gives %s\n",r_LD,buf_LD,buf_LDa);}
+				 if(sg<=sg_STR_EXACT) {return_errs++; my_printf("** Different %%f my_snprintf(%.30Le) gives %s ya_s_snprintf() gives %s\n",r_LD,buf_LD,buf_LDa);}
 	#endif		 	 
-			 	}				 						 		 	 	
+				}	
 			}
 	
 			// now check ldblpowersOf10 
@@ -1894,18 +1897,23 @@ int chk_LD_to_a(void)  // tests for long double
 			 	 if(sg<=sg_STR_EXACT) {return_errs++; printf("** Different %%g my_snprintf(%.20e) gives %s ya_s_snprintf() gives %s\n",(double)r_LD,buf_LD,buf_LDa);}
 	#endif		 	 
 			 	}	
-			// now test %f
-			 nos_tests++;
-			 my_snprintf (buf_LD, sizeof buf_LD,"%.*Lf",sg,r_LD);
-			 ya_s_snprintf(buf_LDa, sizeof buf_LDa,"%.*Lf",sg,r_LD);
-			 if(LD_F_strcmp(buf_LD,buf_LDa,sg)!=0)
-			 	{++errs;
-	#ifdef PR_LD		 	
-			 	 printf("** Different %%f my_snprintf() gives %s ya_s_snprintf() gives %s\n",buf_LD,buf_LDa);
-	#else
-			 	 if(sg<=sg_STR_EXACT) {return_errs++; my_printf("** Different %%f my_snprintf(%.30Le) gives %s ya_s_snprintf() gives %s\n",r_LD,buf_LD,buf_LDa);}
-	#endif		 	 
-			 	}				 			 		 	 	
+			// now test %f - only check a limited range so avoid creating extremely long strings (which makes my_snprintf() extremely slow) - clearly when testing positive powers of 10 this is needed to limit execution time (its reduced by a factor of 10*!)
+			// The tests above from the table test_valued[] do check a few very large values (including LDBL_MAX), so we know the code can correctly create values with a very large number of digits
+			// LDBL_DIG = 18 and LDBL_DECIMAL_DIG=21 so by 1e30 we have exhuasted the "real" decimal digits in the resultant string for all values of sg (and so will be "padding" with zero's).
+			 if(r_LD<=1e30 )
+				{
+				 nos_tests++;
+				 my_snprintf (buf_LD, sizeof buf_LD,"%.*Lf",sg,r_LD);
+				 ya_s_snprintf(buf_LDa, sizeof buf_LDa,"%.*Lf",sg,r_LD);
+				 if(LD_F_strcmp(buf_LD,buf_LDa,sg)!=0)
+					{++errs;
+		#ifdef PR_LD		 	
+					 printf("** Different %%f my_snprintf() gives %s ya_s_snprintf() gives %s\n",buf_LD,buf_LDa);
+		#else
+					 if(sg<=sg_STR_EXACT) {return_errs++; my_printf("** Different %%f my_snprintf(%.30Le) gives %s ya_s_snprintf() gives %s\n",r_LD,buf_LD,buf_LDa);}
+		#endif		 	 
+					}
+				}
 			}
 		
 		   // now check ldblnegpowersOf10	
@@ -3368,15 +3376,30 @@ printf(" Tests will not check sub-normals using string compares as this can caus
 	//Checking double rounding in %e,%f and %g:
 	errs+=chk_dbl_rounding();
 	printf(" Should get 0 differences on string compares at <= %d sig figs :%" PRIu64 " errors found so far\n",DBL_DECIMAL_DIG ,errs);
+#ifdef USE_HR_TIMER	
+	time_taken=read_HR_Timer();
+ 	printf(" Time so far (after all double tests) is %g secs\n",time_taken);
+ #else
+	time_taken=clock();
+	printf(" Time so far (after all double tests) is %g secs\n",(double)time_taken/(double)CLOCKS_PER_SEC);
+#endif 	
 
 #if defined( __SIZEOF_FLOAT128__)  && defined(YA_SP_SPRINTF_QF) 
 	errs+=chk_fast_strtof128() ; // tests for fast_strtof128() if compiler supports __float128 data type
 	errs+=chk_f128_to_a(); /* more advanced tests checking ya_sprintf %Qe as well */
 	errs+=chk_f128_rounding(); /* check rounding */
 	printf(" Float128 should show 0 string differences at <= 33 sig figs and zero round the loop errors for >= 36 sig figs\n"); // FLT128_FLT_DIG=33, FLT128_DECIMAL_DIG=36
+#ifdef USE_HR_TIMER	
+	time_taken=read_HR_Timer();
+ 	printf(" Time so far (after all double and float128 tests) is %g secs\n",time_taken);
+ #else
+	time_taken=clock();
+	printf(" Time so far (after all double and float128 tests) is %g secs\n",(double)time_taken/(double)CLOCKS_PER_SEC);
+#endif 	
 #else
 	printf("Cannot check Float128's as they are not supported by the compiler\n");
 #endif
+
 #if defined(LDBL_MAX_10_EXP) && LDBL_MAX_10_EXP==4932 /* "true" long double */
     errs+=chk_LD_to_a(); /* round loop checks for long doubles */
 #else

@@ -48,7 +48,7 @@
 #include <stddef.h>   // size_t
 #include <stdint.h>   // uint64_t
 #include <string.h>   // memcpy
-#include <stdalign.h> // for aligns() - this has been available since C11
+#include <stdalign.h> // for alignas() - this has been available since C11
 #include <math.h> 		// for fma
 
 #include "../u2_64-128bits-with-two-u64/u2_64.h"
@@ -1531,6 +1531,57 @@ int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, 
  return n>0?n:1 ;// nos digits created
 }	
 
+/* convert to base 10 (decimal) mantissa (d) and exponent(decimal_pos) */
+/* getting ya_d2exp_todmant_exp() to return dmant rather than using a pointer was significantly slower with gcc 15.2.0 */
+
+void ya_d2exp_todmant_exp(uint64_t ieeeMantissa,uint32_t ieeeExponent, int32_t precision, uint64_t *dmant,int32_t *decimal_pos) 
+{
+#ifdef DEBUG_DCONV
+  printf("ya_d2exp_todmant_exp(mant=0X%llx,exp=%u,prec=%d) called\n",ieeeMantissa,ieeeExponent,precision);
+#endif
+  int32_t SieeeExponent;
+  if (ieeeExponent == 0) 
+ 	{// subnormals
+	 SieeeExponent = 1-(DOUBLE_EXPONENT_OFFSET);// exponent for subnormals is offset by 1
+	 int s = ya_clz(ieeeMantissa); // normalise so msb is 1, and adjust exponent to match
+	 ieeeMantissa <<= s;
+	 SieeeExponent -= s;
+	}  
+  else // normals
+ 	{ieeeMantissa= (ieeeMantissa | DOUBLE_IMPLICIT_BIT  )<<DOUBLE_EXPONENT_BITS;// put back "hidden bit" and shift so msbit is set
+ 	 SieeeExponent=(int32_t)ieeeExponent-(DOUBLE_EXPONENT_OFFSET+DOUBLE_EXPONENT_BITS);  // adjust exponent for bias and shift on line above
+	}	   	
+#ifdef DEBUG_DCONV
+  printf(" after normalisation mant=0X%llx exp=%d\n",ieeeMantissa,SieeeExponent);
+#endif  	
+ // static inline void FixedWidth(uint64_t m,int e, int n, uint64_t *dp, int *pp) 
+ ;// decimal mantissa
+ int p;	 // decimal exponent
+ int n=precision+1<=18?precision+1:18; // n is total number of digits required , precision is unsigned so n>=1, n is also limited to 18 which is also enforced here	
+ if(n<0) n=0; // This can happen with %f, set to 0 as we still need decimal exponent
+ FixedWidth(ieeeMantissa,SieeeExponent, n, dmant, &p) ;// convert to base 10 mantissa d and exponent p
+#ifdef DEBUG_DCONV
+  printf(" after FixedWidth(n=%d) mant10=%llu exp10=%d\n",n,*dmant,p);
+#endif    
+ p += n - 1;// 1 digit before decimal point
+ *decimal_pos=p; 
+ return;
+}	
+
+/* convert dmant from ya_d2exp_todmant_exp() to a string (char *) */
+int ya_d2exp_dmant_to_string(uint64_t dmant, int32_t precision, char* buffer) 
+{
+#ifdef DEBUG_DCONV
+  printf("ya_d2exp_dmant_to_string(dmant=0X%llx,prec=%d) called\n",dmant,precision);
+#endif
+ int n=precision+1<=18?precision+1:18; // n is total number of digits required , precision is unsigned so n>=1, n is also limited to 18 which is also enforced here	
+ if(n<0) {buffer[0]='0'; return 1; } // can happen with %f
+ mantissa64_to_string(buffer, dmant, n);// need to limit nos digits to <=18  
+#ifdef DEBUG_DCONV
+  printf(" after mantissa64_to_string(n=%d) buffer=\"%.*s\"\n",n,n>0?n:1,buffer);
+#endif  
+ return n>0?n:1 ;// nos digits created
+}	
 
 /* user function that can be directly called to convert double -> string, , returns the same result as sprintf(dst,"%.*e",prec,f) 
 */
@@ -1616,6 +1667,7 @@ char * ya_dconvert_efmt(char *dst, double f, uint32_t prec)  /* prec is required
  return dst;
 }
 
+
 /* user function that can be directly called to convert double -> string, , returns the same result as sprintf(dst,"%.*f",prec,f) 
   Warning - the size of dst may need to be very large, f can be up to 1.8e308 so max space required is 308+prec+3 [ 3 as sign,dp,final null ]
   However, in practice we expect prec to be relatively small, but only prec=0 is specially optimised 
@@ -1680,15 +1732,23 @@ char * ya_dconvert_ffmt(char *dst, double f, uint32_t prec)  /* prec is required
  // if prec=0 and it will fit into an integer (exactly) then calculations are simplish and fast, otherwise we use the same approach as used in ya_sprintf() for %f
  if( prec!=0 || f>=(double)u64powersOf10[18]) // largest that will fit in a uint64 is 19, 18 is limit due to mantissa64_to_string()
  	{// simple approach will not work - have to use a more complex approach (exactly the same as used in ya_sprintf() for %f )
-	 // int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, int32_t precision, char* buffer,int32_t *decimal_pos) 
 	 int32_t tens; // (real) decimal exponent
 	 int dlen;
 	 int32_t req_prec; // precision required for 2nd call to ya_d2exp_buffered_n_ya_sprintf
 	 // for %f we need to get 10's exponent 1st, then use this to set precision 
+#if 1 /* 2v5 - this should be faster than 2v4 as "to string" portion of conversion is only ever done once whereas in 2v4 it might happen twice if req_prec<18 */
+	 uint64_t dmant; // decimal mantissa
+	 ya_d2exp_todmant_exp(mantissa,expo, 18, &dmant, &tens); // used to accurately set tens 
+	 req_prec=(int32_t)(tens + (int32_t)prec);// calculate actual value for digits required to give specified precision (for %f that's digits after dp)
+	 if(req_prec<18) 
+  	 	ya_d2exp_todmant_exp(mantissa,expo, req_prec, &dmant, &tens); // we have already done the conversion with req_prec=18 above, so only need this for req_prec<18 	 
+  	 dlen=ya_d2exp_dmant_to_string(dmant, req_prec, dst) ; // actually mantissa to a string in dst
+#else /* 2v4 */	 
 	 dlen=ya_d2exp_buffered_n_ya_sprintf(mantissa,expo, 18, dst, &tens); // used to accurately set tens (will also be used as final result if req_prec>=18).
 	 req_prec=(int32_t)(tens + (int32_t)prec);// calculate actual value for digits required to give specified precision (for %f that's digits after dp)
 	 if(req_prec<18) 
   	 	dlen=ya_d2exp_buffered_n_ya_sprintf(mantissa,expo, req_prec, dst, &tens);// we have already done the conversion with req_prec=18 above, so only need this for req_prec<18 
+#endif
   	 //printf(" ya_dconvert_ffmt(%.20g,%u): req_prec=%d ya_d2exp_buffered_n_ya_sprintf() returns dlen=%d, tens=%d and string %.*s\n",f,prec,req_prec,dlen,tens,dlen,dst);
 	 char *idst=dst;
 	 if(req_prec==-1) tens++; // prec=-1 means we round up to a single digit causing an offset between tens and actual power of 10 exponent
@@ -1794,6 +1854,7 @@ char * ya_dconvert_ffmt(char *dst, double f, uint32_t prec)  /* prec is required
  *dst=0; // terminate string
  return dst;  
 }
+
 
 /* user function that can be directly called to convert double -> string, returns the same result as sprintf(dst,"%.*g",prec,f) 
    C23 standard says for %g:

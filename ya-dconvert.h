@@ -49,7 +49,7 @@
 	 // the two ya_short functions provide functionality not available in sprintf(), which is especially useful when writing numerical data to a file in text format, as writing fewer characters is both faster and gives a smaller file size.
 	 // ya_shortf() also works directly on floats which also gives it a significant speed advantage.
 	char *ya_dconvert_efmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*e",prec,f). dst must have space for at least 9+prec characters*/
-	char *ya_dconvert_ffmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*f",prec,f). dst must have space for at least 308+prec+3 characters if f is DBL_MAX (1.8e308) */
+	char *ya_dconvert_ffmt(char *dst, double f, uint32_t prec) ; /* prec is required number of digits after decimal point - emulates sprintf(dst,"%.*f",prec,f). dst must have space for at least 308+prec+3 characters if f is DBL_MAX (1.8e308) and an absolute minimum space of 20 characters  */
 	char *ya_dconvert_gfmt(char *dst, double f, int32_t prec) ; /* prec is required total number of mantissa digits (prec<0 gives default = 6) - emulates sprintf(dst,"%.*g",prec,f). dst must have space for at least 8+prec characters */
 	char *ya_shortd(char *dst, double f) ; /* create shortest string that accurately represents double "f" using either fixed point or exponential notation. dst must have space for at least 25 characters*/
 	char *ya_shortf(char *dst, float f) ; /* create shortest string that accurately represents float "f" using either fixed point or exponential notation. dst must have space for at least 16 characters */
@@ -57,8 +57,10 @@
 	 // "support functions" 
 
 	 // 19/2/2026 Peter Miller interface to ya_sprintf()
-	 int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, int32_t precision, char* buffer,int32_t *decimal_pos) ;
-
+     void ya_d2exp_todmant_exp(uint64_t ieeeMantissa,uint32_t ieeeExponent, int32_t precision, uint64_t *dmant,int32_t *decimal_pos) ; /* ya_d2exp_todmant_exp() converts to dmant & decimal_pos */
+	 int ya_d2exp_dmant_to_string(uint64_t dmant, int32_t precision, char* buffer) ;/*  takes dmant & decimal_pos from ya_d2exp_todmant_exp() and converts to a string which is placed in char *buffer */
+	 int ya_d2exp_buffered_n_ya_sprintf(uint64_t ieeeMantissa,uint32_t ieeeExponent, int32_t precision, char* buffer,int32_t *decimal_pos) ;/* ya_d2exp_todmant_exp()  followed by ya_d2exp_dmant_to_string() all in one function */
+	 
 	 // 27/2/2026 added interface for fast_strtod()
 	 double ya_conv_mant_exp_to_double(bool signedM,uint64_t m10,int32_t dec_exp); // returns m10*1o^dec_exp as a double	 
 	 
